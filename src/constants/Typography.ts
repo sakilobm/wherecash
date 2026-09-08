@@ -38,9 +38,9 @@ export const LineHeight = {
 export const LetterSpacing = {
   tight: -0.5,
   normal: 0,
-  wide: 0.5,
-  wider: 1,
-  widest: 2,
+  wide: Platform.OS === 'android' ? 0 : 0.5,
+  wider: Platform.OS === 'android' ? 0 : 1,
+  widest: Platform.OS === 'android' ? 0 : 2,
 } as const;
 
 export const Typography = {

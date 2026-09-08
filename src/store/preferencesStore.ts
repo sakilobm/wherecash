@@ -33,12 +33,14 @@ interface PreferencesState {
   hapticsEnabledActions: boolean;
   notifPrefs: NotifPrefs;
   storagePermissionGranted: boolean;
+  hideBalance: boolean;
   setHapticLevel: (level: HapticLevel) => void;
   setHapticsEnabledOnboarding: (enabled: boolean) => void;
   setHapticsEnabledButtonTaps: (enabled: boolean) => void;
   setHapticsEnabledActions: (enabled: boolean) => void;
   setNotifPrefs: (prefs: Partial<NotifPrefs>) => void;
   setStoragePermissionGranted: (granted: boolean) => void;
+  toggleHideBalance: () => void;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -50,6 +52,7 @@ export const usePreferencesStore = create<PreferencesState>()(
       hapticsEnabledActions: true,
       notifPrefs: DEFAULT_NOTIF_PREFS,
       storagePermissionGranted: false,
+      hideBalance: false,
 
       setHapticLevel: (hapticLevel) => set({ hapticLevel }),
       setHapticsEnabledOnboarding: (hapticsEnabledOnboarding) => set({ hapticsEnabledOnboarding }),
@@ -57,6 +60,7 @@ export const usePreferencesStore = create<PreferencesState>()(
       setHapticsEnabledActions: (hapticsEnabledActions) => set({ hapticsEnabledActions }),
       setNotifPrefs: (prefs) => set((state) => ({ notifPrefs: { ...state.notifPrefs, ...prefs } })),
       setStoragePermissionGranted: (storagePermissionGranted) => set({ storagePermissionGranted }),
+      toggleHideBalance: () => set((state) => ({ hideBalance: !state.hideBalance })),
     }),
     {
       name: 'wc-preferences',

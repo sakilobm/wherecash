@@ -173,5 +173,14 @@ To decouple layout calculations, animation state, and visual presentation within
   - [TutorialSpotlightModal.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/components/tutorial/TutorialSpotlightModal.tsx): Reduced to a declarative modal shell (< 80 lines) delegating state and sub-components.
   - [InteractiveGuidesSheet.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/components/profile/InteractiveGuidesSheet.tsx): Simplified component rendering mapped tour listings and start/reset triggers.
 
-
-
+### 10. Modernized Dashboard Architecture & High-Affordance Redesign
+To resolve cognitive overload, eliminate duplicated navigation routes, prevent Android font clipping, and increase action affordance:
+- **Lean View Shell**: Reduced [index.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/app/(tabs)/index.tsx) to an ultra-lean declarative shell (< 140 lines) delegating state to `useHomeScreen` and rendering atomic widgets.
+- **Android Font Clipping Cure**: In [Typography.ts](file:///c:/Users/sowbh/Desktop/MoneyApp/src/constants/Typography.ts) and [AppText.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/components/AppText.tsx), neutralized positive letter-spacing on Android and added `includeFontPadding: false` to eliminate trailing glyph truncation on custom fonts (e.g. "Expens" -> "Expense").
+- **High-Affordance Tactile Quick Actions**: Extracted [HomeQuickActions.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/features/dashboard/components/HomeQuickActions.tsx) featuring elevated 60x60px squircle buttons with vibrant borders, colored drop shadows, and anti-clipping typography. Replaced duplicate "Activity" action with "Split / Due" routing to the Ledger tab.
+- **Interactive Luxury Balance Card**: Extracted [HomeBalanceCard.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/features/dashboard/components/HomeBalanceCard.tsx) with lush emerald gradient, privacy toggle (`hideBalance`), and net savings pulse.
+- **Progressive Disclosure Sections**:
+  - [ThisMonthOverview.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/features/dashboard/components/ThisMonthOverview.tsx): 3-card grid (Income, Expenses, Net Saved) with Financial Insights analytics banner.
+  - [HomeSpendingSection.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/features/dashboard/components/HomeSpendingSection.tsx): Top 3 spending categories with linear progress bars.
+  - [HomeRecentActivitySection.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/features/dashboard/components/HomeRecentActivitySection.tsx): Top 3 recent transactions with account pill badges (`Cash Wallet`, `Prime Visa`).
+  - [HomeUpcomingPaymentsSection.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/features/dashboard/components/HomeUpcomingPaymentsSection.tsx): Top 2 urgent upcoming or overdue bills with status indicators.

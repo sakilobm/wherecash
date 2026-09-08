@@ -13,23 +13,28 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useDashboardData } from './useDashboardData';
 import { useAuthStore } from '@store/authStore';
-import { toast } from '@store/toastStore';
+import { usePlannedPaymentsStore } from '@store/plannedPaymentsStore';
+import { useFormatCurrency } from '@hooks/useFormatCurrency';
 import { useTheme } from '@hooks/useTheme';
 import type { Transaction } from '@store/types';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export interface QuickAction {
-  icon:   IoniconName;
-  label:  string;
-  color:  string;
-  action: () => void;
+  key:      string;
+  icon:     IoniconName;
+  label:    string;
+  color:    string;
+  gradient: [string, string];
+  action:   () => void;
 }
 
 export function useHomeScreen() {
   const { colors } = useTheme();
+  const { symbol } = useFormatCurrency();
   const dashboard  = useDashboardData();
   const user       = useAuthStore((s) => s.user);
+  const plannedPayments = usePlannedPaymentsStore((s) => s.payments);
 
   const [addVisible, setAddVisible] = useState(false);
   const [addType,    setAddType]    = useState<'expense' | 'income'>('expense');
@@ -57,10 +62,38 @@ export function useHomeScreen() {
   }, []);
 
   const quickActions = useMemo<QuickAction[]>(() => [
-    { icon: 'trending-down', label: 'Expense',  color: colors.status.expense, action: () => openAdd('expense') },
-    { icon: 'trending-up',   label: 'Income',   color: colors.status.income,  action: () => openAdd('income') },
-    { icon: 'swap-horizontal', label: 'Transfer', color: colors.brand.primary,  action: () => openTransfer() },
-    { icon: 'receipt',       label: 'Activity', color: colors.status.warning, action: () => router.push('/(tabs)/transactions') },
+    {
+      key: 'expense',
+      icon: 'trending-down',
+      label: 'Expense',
+      color: colors.status.expense,
+      gradient: ['#EF4444', '#DC2626'],
+      action: () => openAdd('expense'),
+    },
+    {
+      key: 'income',
+      icon: 'trending-up',
+      label: 'Income',
+      color: colors.status.income,
+      gradient: ['#10B981', '#059669'],
+      action: () => openAdd('income'),
+    },
+    {
+      key: 'transfer',
+      icon: 'swap-horizontal',
+      label: 'Transfer',
+      color: '#6366F1',
+      gradient: ['#6366F1', '#4F46E5'],
+      action: () => openTransfer(),
+    },
+    {
+      key: 'split',
+      icon: 'people',
+      label: 'Split / Due',
+      color: '#F59E0B',
+      gradient: ['#F59E0B', '#D97706'],
+      action: () => router.push('/(tabs)/ledger'),
+    },
   ], [openAdd, openTransfer, colors]);
 
   const firstName = user?.fullName?.split(' ')[0] ?? 'Sakil';
@@ -73,6 +106,8 @@ export function useHomeScreen() {
 
   return {
     dashboard,
+    symbol,
+    plannedPayments,
     user: { firstName, initials, avatarId: user?.avatarUrl ?? undefined, currency: user?.currency ?? 'USD' },
     addSheet: {
       isVisible: addVisible,
