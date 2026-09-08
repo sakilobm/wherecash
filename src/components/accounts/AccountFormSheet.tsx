@@ -1,21 +1,24 @@
 /**
  * @file AccountFormSheet.tsx
  * @architecture Presentation Layer — Extracted Feature Modal
- * @description 2-Step Progressive Account Creation Wizard:
- *   - Step 1: Select account type and understand its use case (Checking, Cash, Savings, Credit, Investment)
- *   - Step 2: Name and Balance with live card preview, and collapsible appearance customizations (Color, Icon, Default)
- *   Eliminates visual clutter and cognitive fatigue so users can create accounts effortlessly in seconds.
+ * @description 2-Step Progressive Wizard + Ivy Wallet-inspired Ergonomics:
+ *   - Step 1: Choose Account Type with interactive purpose cards (Checking, Cash, Savings, Credit, Investment)
+ *   - Step 2: Ivy Wallet-styled inputs:
+ *       1. Account Name (with color/icon avatar)
+ *       2. Accent Color (inline horizontal swatches)
+ *       3. Currency Selector (shows default from setup, tap to expand)
+ *       4. Big Tactile Balance Input (tap to focus numeric decimal keypad)
+ *       5. Customization Drawer (Icon grid & Set as Primary toggle)
  * @associatedFiles src/features/accounts/hooks/useAccountsScreen.ts, src/app/accounts.tsx
  */
 
-import React, { useState, useEffect, type ComponentProps } from 'react';
+import React, { useState, useEffect, useRef, type ComponentProps } from 'react';
 import {
   View, ScrollView, StyleSheet, Pressable, Modal,
   Platform, TextInput, KeyboardAvoidingView, Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, Easing, FadeIn,
 } from 'react-native-reanimated';
@@ -45,7 +48,17 @@ const PRESET_ICONS: IoniconName[] = [
   'car-outline', 'heart-outline', 'star-outline', 'diamond-outline',
 ];
 
-const CURRENCY_CODES: CurrencyCode[] = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD'];
+const CURRENCY_CODES: CurrencyCode[] = ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'];
+
+const CURRENCY_SYMBOLS: Record<CurrencyCode, string> = {
+  INR: '₹',
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  JPY: '¥',
+  CAD: 'CA$',
+  AUD: 'AU$',
+};
 
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: 'checking',   label: 'Checking / Bank' },
@@ -67,8 +80,8 @@ const ACCOUNT_TYPE_INFO: Record<AccountType, { label: string; icon: IoniconName;
     label: 'Cash Wallet',
     icon: 'cash-outline',
     color: '#10B981',
-    desc: 'For physical cash in hand, wallet notes, and day-to-day petty cash expenses.',
-    placeholder: 'e.g. Cash in Hand, Wallet Pocket',
+    desc: 'For physical cash in hand, wallet notes, and petty everyday cash expenses.',
+    placeholder: 'e.g. Cash in Hand, Pocket Wallet',
   },
   savings: {
     label: 'Savings Account',
@@ -108,9 +121,13 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
 
   const [step, setStep] = useState<1 | 2>(1);
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [form, setForm] = useState<AccountFormState>(DEFAULT_ACCOUNT_FORM);
 
-  const userCurrency = useAuthStore((s) => s.user?.currency) ?? 'USD';
+  const userCurrency = (useAuthStore((s) => s.user?.currency) as CurrencyCode) ?? 'INR';
+
+  const nameInputRef    = useRef<TextInput>(null);
+  const balanceInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (visible) {
@@ -137,24 +154,24 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
           currency: userCurrency,
           ...initialPreset,
         });
-        // If an initial preset was picked from empty state cards, jump directly to step 2!
         setStep(initialPreset ? 2 : 1);
         setCustomizeOpen(false);
       }
-      slideY.value = withTiming(0, { duration: 380, easing: Easing.out(Easing.cubic) });
+      setShowCurrencyPicker(false);
+      slideY.value = withTiming(0, { duration: 360, easing: Easing.out(Easing.cubic) });
     } else {
-      slideY.value = withTiming(440, { duration: 260, easing: Easing.in(Easing.cubic) });
+      slideY.value = withTiming(440, { duration: 250, easing: Easing.in(Easing.cubic) });
     }
-  }, [visible, editingAccount, initialPreset]);
+  }, [visible, editingAccount, initialPreset, userCurrency]);
 
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: slideY.value }] }));
 
   const set = <K extends keyof AccountFormState>(key: K, val: AccountFormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: val }));
 
-  const sheetBg = colors.background.secondary;
-  const inputBg = colors.background.primary;
-  const inputClr = colors.text.primary;
+  const sheetBg = isDark ? colors.background.secondary : '#FFFFFF';
+  const inputBg = isDark ? colors.background.card : '#F8FAFC';
+  const currentSymbol = CURRENCY_SYMBOLS[form.currency] || '$';
 
   return (
     <Modal transparent visible={visible} animationType="none" statusBarTranslucent onRequestClose={onClose}>
@@ -164,7 +181,7 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
         <Animated.View style={[s.sheet, sheetStyle, { backgroundColor: sheetBg, paddingBottom: insets.bottom + 16, shadowColor: colors.black }]}>
           <View style={[s.handle, { backgroundColor: colors.glass.backgroundStrong }]} />
 
-          {/* ── Sheet Header ── */}
+          {/* ── Top Bar ── */}
           <View style={s.header}>
             {step === 2 && !editingAccount ? (
               <Pressable
@@ -183,12 +200,12 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
             )}
 
             <View style={s.headerCenter}>
-              <AppText variant="headingSM" color={colors.text.primary}>
+              <AppText variant="headingSM" color={colors.text.primary} style={{ fontWeight: '800' }}>
                 {editingAccount ? 'Edit Account' : 'New Account'}
               </AppText>
               {!editingAccount && (
                 <AppText variant="caption" color={colors.text.tertiary}>
-                  {step === 1 ? 'Step 1 of 2: Choose Type' : 'Step 2 of 2: Details & Balance'}
+                  {step === 1 ? 'Step 1 of 2: Choose Type' : 'Step 2 of 2: Account Details'}
                 </AppText>
               )}
             </View>
@@ -217,7 +234,7 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
             {/* ══════════════════════════════════════════════════════
-                STEP 1: SELECT ACCOUNT TYPE & PURPOSE
+                STEP 1: SELECT ACCOUNT TYPE & PURPOSE (USER APPROVED)
                ══════════════════════════════════════════════════════ */}
             {step === 1 && !editingAccount && (
               <Animated.View entering={FadeIn.duration(220)} style={{ gap: 14 }}>
@@ -226,7 +243,7 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
                     What kind of account is this?
                   </AppText>
                   <AppText variant="bodySM" color={colors.text.tertiary} style={{ marginTop: 2, lineHeight: 18 }}>
-                    Select the role of this account. This helps MoneyApp separate your liquid cash from credit and investments.
+                    Select the account role. MoneyApp organizes your cash flow and net worth based on this.
                   </AppText>
                 </View>
 
@@ -288,9 +305,9 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     setStep(2);
                   }}
-                  style={[s.saveBtn, { backgroundColor: form.color, marginTop: 8 }]}
+                  style={[s.mainSaveBtn, { backgroundColor: form.color, marginTop: 8 }]}
                 >
-                  <AppText style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 16 }}>
+                  <AppText style={s.mainSaveBtnText}>
                     Continue to Details
                   </AppText>
                   <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
@@ -299,149 +316,221 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
             )}
 
             {/* ══════════════════════════════════════════════════════
-                STEP 2: DETAILS, BALANCE & COLLAPSIBLE CUSTOMIZATION
+                STEP 2: IVY WALLET ORDER (Name -> Color -> Currency -> Balance)
                ══════════════════════════════════════════════════════ */}
             {(step === 2 || editingAccount) && (
-              <Animated.View entering={FadeIn.duration(220)} style={{ gap: 4 }}>
-                {/* Live preview card */}
-                <View style={[s.previewWrap, { shadowColor: form.color }]}>
-                  <LinearGradient colors={[form.color, form.color + 'BB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.previewCard}>
-                    <View style={[s.previewBlob1, { backgroundColor: colors.glass.backgroundStrong }]} />
-                    <View style={[s.previewBlob2, { backgroundColor: colors.glass.background }]} />
-                    <View style={s.previewContent}>
-                      <View style={s.previewTop}>
-                        <View style={[s.iconCircle, { backgroundColor: colors.glass.backgroundStrong }]}>
-                          <Ionicons name={form.icon} size={18} color={colors.white} />
-                        </View>
-                        <View style={[s.typePill, { backgroundColor: colors.glass.backgroundStrong }]}>
-                          <AppText style={[s.typeText, { color: colors.white }]}>{form.type.toUpperCase()}</AppText>
-                        </View>
-                      </View>
-                      <AppText style={[s.balanceValue, { fontSize: 24, color: colors.white }]}>
-                        {form.currency || 'USD'} {parseFloat(form.balance || '0').toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              <Animated.View entering={FadeIn.duration(220)} style={{ gap: 14 }}>
+                {/* 1. Account Name with Color/Icon Avatar */}
+                <View style={[s.nameCard, { backgroundColor: inputBg, borderColor: colors.glass.border }]}>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setCustomizeOpen(!customizeOpen);
+                    }}
+                    style={[s.avatarCircle, { backgroundColor: form.color }]}
+                  >
+                    <Ionicons name={form.icon} size={22} color="#FFFFFF" />
+                  </Pressable>
+
+                  <View style={s.nameInputWrap}>
+                    <AppText variant="caption" color={colors.text.tertiary} style={s.tinyHeader}>
+                      ACCOUNT NAME
+                    </AppText>
+                    <TextInput
+                      ref={nameInputRef}
+                      style={[s.nameInput, { color: colors.text.primary }]}
+                      value={form.name}
+                      onChangeText={(v) => set('name', v)}
+                      placeholder={ACCOUNT_TYPE_INFO[form.type].placeholder}
+                      placeholderTextColor={colors.text.tertiary}
+                      autoFocus={!editingAccount}
+                    />
+                  </View>
+                </View>
+
+                {/* 2. Accent Color (Inline Swatches) */}
+                <View style={s.section}>
+                  <AppText variant="caption" color={colors.text.tertiary} style={s.tinyHeader}>
+                    CARD COLOR
+                  </AppText>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.colorScroll}>
+                    {PRESET_COLORS.map((c) => {
+                      const active = form.color === c;
+                      return (
+                        <Pressable
+                          key={c}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            set('color', c);
+                          }}
+                          style={[
+                            s.colorDot,
+                            { backgroundColor: c },
+                            active && s.colorDotActive,
+                          ]}
+                        />
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                {/* 3. Currency Selector */}
+                <View style={s.section}>
+                  <View style={s.currencyHeaderRow}>
+                    <AppText variant="caption" color={colors.text.tertiary} style={s.tinyHeader}>
+                      CURRENCY
+                    </AppText>
+                    <Pressable
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setShowCurrencyPicker(!showCurrencyPicker);
+                      }}
+                      style={[s.currencyActivePill, { backgroundColor: form.color + '15', borderColor: form.color + '40' }]}
+                    >
+                      <AppText style={{ color: form.color, fontWeight: '800', fontSize: 13 }}>
+                        {currentSymbol} {form.currency}
                       </AppText>
-                      <AppText style={[s.accountName, { color: colors.white + 'CC' }]}>{form.name || 'Account Name'}</AppText>
-                    </View>
-                  </LinearGradient>
+                      <Ionicons name={showCurrencyPicker ? 'chevron-up' : 'chevron-down'} size={14} color={form.color} />
+                    </Pressable>
+                  </View>
+
+                  {showCurrencyPicker && (
+                    <Animated.View entering={FadeIn.duration(200)} style={s.currencyGrid}>
+                      {CURRENCY_CODES.map((code) => {
+                        const active = form.currency === code;
+                        return (
+                          <Pressable
+                            key={code}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              set('currency', code);
+                              setShowCurrencyPicker(false);
+                            }}
+                            style={[
+                              s.currencyChip,
+                              {
+                                backgroundColor: active ? form.color : inputBg,
+                                borderColor: active ? form.color : colors.glass.border,
+                              },
+                            ]}
+                          >
+                            <AppText style={{ color: active ? '#FFFFFF' : colors.text.secondary, fontWeight: active ? '700' : '500', fontSize: 12.5 }}>
+                              {CURRENCY_SYMBOLS[code]} {code}
+                            </AppText>
+                          </Pressable>
+                        );
+                      })}
+                    </Animated.View>
+                  )}
                 </View>
 
-                {/* Account Name */}
-                <AppText variant="labelMD" color={colors.text.secondary} style={s.fieldLabel}>Account Name</AppText>
-                <TextInput
-                  style={[s.input, { backgroundColor: inputBg, color: inputClr }]}
-                  value={form.name}
-                  onChangeText={(v) => set('name', v)}
-                  placeholder={ACCOUNT_TYPE_INFO[form.type].placeholder}
-                  placeholderTextColor={colors.text.tertiary}
-                />
+                {/* 4. Account Balance (Tactile Large Input + Keypad) */}
+                <Pressable
+                  onPress={() => balanceInputRef.current?.focus()}
+                  style={[s.balanceCard, { backgroundColor: inputBg, borderColor: form.color + '38' }]}
+                >
+                  <View style={s.balanceCardHeader}>
+                    <AppText variant="caption" color={colors.text.tertiary} style={s.tinyHeader}>
+                      STARTING BALANCE
+                    </AppText>
+                    <AppText variant="caption" color={form.color} style={{ fontWeight: '600' }}>
+                      Tap to edit
+                    </AppText>
+                  </View>
 
-                {/* Current Balance */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, marginBottom: 6 }}>
-                  <AppText variant="labelMD" color={colors.text.secondary}>Current Balance</AppText>
-                  <AppText variant="caption" color={colors.text.tertiary}>Default: 0.00</AppText>
-                </View>
-                <TextInput
-                  style={[s.input, { backgroundColor: inputBg, color: inputClr, fontSize: 18, fontWeight: '700' }]}
-                  value={form.balance}
-                  onChangeText={(v) => set('balance', v.replace(/[^0-9.]/g, ''))}
-                  placeholder="0.00"
-                  placeholderTextColor={colors.text.tertiary}
-                  keyboardType="decimal-pad"
-                />
+                  <View style={s.balanceRow}>
+                    <AppText style={[s.balanceSymbol, { color: form.color }]}>
+                      {currentSymbol}
+                    </AppText>
+                    <TextInput
+                      ref={balanceInputRef}
+                      style={[s.balanceBigInput, { color: colors.text.primary }]}
+                      value={form.balance}
+                      onChangeText={(v) => set('balance', v.replace(/[^0-9.]/g, ''))}
+                      placeholder="0.00"
+                      placeholderTextColor={colors.text.tertiary}
+                      keyboardType="decimal-pad"
+                      returnKeyType="done"
+                    />
+                  </View>
+                </Pressable>
 
-                {/* Currency */}
-                <AppText variant="labelMD" color={colors.text.secondary} style={[s.fieldLabel, { marginTop: 14 }]}>
-                  Currency
-                </AppText>
-                <View style={s.chipRow}>
-                  {CURRENCY_CODES.map((code) => {
-                    const active = form.currency === code;
-                    return (
-                      <Pressable
-                        key={code}
-                        onPress={() => set('currency', code)}
-                        style={[s.chip, { backgroundColor: active ? form.color : inputBg, borderColor: active ? form.color : 'transparent', borderWidth: 1.5 }]}
-                      >
-                        <AppText variant="labelSM" style={{ color: active ? colors.white : colors.text.secondary, fontWeight: active ? '700' : '500' }}>
-                          {code}
-                        </AppText>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                {/* Collapsible Appearance & Defaults Section */}
+                {/* 5. Customization Drawer (Icons & Primary Default) */}
                 <Pressable
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setCustomizeOpen(!customizeOpen);
                   }}
-                  style={[s.accordionToggle, { backgroundColor: inputBg, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}
+                  style={[s.accordionToggle, { backgroundColor: inputBg, borderColor: colors.glass.border }]}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Ionicons name="color-palette-outline" size={18} color={form.color} />
+                    <Ionicons name="sparkles-outline" size={16} color={form.color} />
                     <AppText variant="labelMD" color={colors.text.primary} style={{ fontWeight: '600' }}>
-                      Customize Icon, Color & Defaults
+                      Customize Icon & Primary Default
                     </AppText>
                   </View>
                   <Ionicons name={customizeOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.text.tertiary} />
                 </Pressable>
 
                 {customizeOpen && (
-                  <Animated.View entering={FadeIn.duration(200)} style={s.accordionContent}>
-                    {/* Color Swatches */}
-                    <AppText variant="labelSM" color={colors.text.secondary} style={{ marginTop: 4, marginBottom: 8 }}>
-                      Card Theme Color
+                  <Animated.View entering={FadeIn.duration(200)} style={{ gap: 12 }}>
+                    <AppText variant="caption" color={colors.text.tertiary} style={s.tinyHeader}>
+                      SELECT CARD ICON
                     </AppText>
-                    <View style={s.colorRow}>
-                      {PRESET_COLORS.map((c) => {
-                        const active = form.color === c;
-                        return (
-                          <Pressable
-                            key={c}
-                            onPress={() => set('color', c)}
-                            style={[s.colorDot, { backgroundColor: c }, active && { transform: [{ scale: 1.2 }], borderWidth: 3, borderColor: colors.white, shadowColor: c, shadowOpacity: 0.7, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 6 }]}
-                          />
-                        );
-                      })}
-                    </View>
-
-                    {/* Icon Grid */}
-                    <AppText variant="labelSM" color={colors.text.secondary} style={{ marginTop: 14, marginBottom: 8 }}>
-                      Card Icon
-                    </AppText>
-                    <View style={s.iconRow}>
+                    <View style={s.iconGrid}>
                       {PRESET_ICONS.map((ic) => {
                         const active = form.icon === ic;
                         return (
                           <Pressable
                             key={ic}
-                            onPress={() => set('icon', ic)}
-                            style={[s.iconOption, { backgroundColor: active ? form.color + '22' : inputBg, borderWidth: active ? 2 : 0, borderColor: active ? form.color : 'transparent' }]}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              set('icon', ic);
+                            }}
+                            style={[
+                              s.iconBtn,
+                              {
+                                backgroundColor: active ? form.color + '25' : inputBg,
+                                borderColor: active ? form.color : colors.glass.border,
+                                borderWidth: active ? 2 : 1,
+                              },
+                            ]}
                           >
-                            <Ionicons name={ic} size={22} color={active ? form.color : colors.text.secondary} />
+                            <Ionicons name={ic} size={20} color={active ? form.color : colors.text.secondary} />
                           </Pressable>
                         );
                       })}
                     </View>
 
-                    {/* Set as Default Account Toggle */}
-                    <Pressable onPress={() => set('isDefault', !form.isDefault)} style={s.toggleRow}>
-                      <View style={{ flex: 1, paddingRight: 12 }}>
+                    {/* Primary Account Toggle */}
+                    <Pressable
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        set('isDefault', !form.isDefault);
+                      }}
+                      style={[s.toggleCard, { backgroundColor: inputBg, borderColor: colors.glass.border }]}
+                    >
+                      <View style={{ flex: 1, paddingRight: 10 }}>
                         <AppText variant="labelMD" color={colors.text.primary}>Set as Primary Account</AppText>
                         <AppText variant="caption" color={colors.text.tertiary}>Selected by default for all new expenses and income</AppText>
                       </View>
-                      <View style={[s.toggle, { backgroundColor: form.isDefault ? form.color : colors.glass.backgroundStrong }]}>
-                        <View style={[s.toggleThumb, { backgroundColor: colors.white, transform: [{ translateX: form.isDefault ? 18 : 0 }] }]} />
+                      <View style={[s.toggleSwitch, { backgroundColor: form.isDefault ? form.color : colors.glass.backgroundStrong }]}>
+                        <View style={[s.toggleThumb, { backgroundColor: '#FFFFFF', transform: [{ translateX: form.isDefault ? 18 : 0 }] }]} />
                       </View>
                     </Pressable>
                   </Animated.View>
                 )}
 
-                {/* Save Button */}
-                <Pressable onPress={() => onSave(form)} style={[s.saveBtn, { backgroundColor: form.color, marginTop: 16 }]}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.white} />
-                  <AppText style={{ color: colors.white, fontWeight: '700', fontSize: 16 }}>
+                {/* ── Main Action Button ── */}
+                <Pressable
+                  onPress={() => {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    onSave(form);
+                  }}
+                  style={({ pressed }) => [s.mainSaveBtn, { backgroundColor: form.color, opacity: pressed ? 0.85 : 1 }]}
+                >
+                  <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                  <AppText style={s.mainSaveBtnText}>
                     {editingAccount ? 'Save Changes' : 'Create Account'}
                   </AppText>
                 </Pressable>
@@ -465,7 +554,7 @@ const s = StyleSheet.create({
     }),
   },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 12 },
   headerBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center', gap: 2 },
 
@@ -481,8 +570,11 @@ const s = StyleSheet.create({
     borderRadius: 2,
   },
 
-  scroll: { paddingHorizontal: 20, paddingBottom: 24, gap: 4 },
+  scroll: { paddingHorizontal: 20, paddingBottom: 28, gap: 14 },
+  section: { gap: 6 },
+  tinyHeader: { fontWeight: '700', letterSpacing: 0.8 },
 
+  /* ── Step 1 Cards ── */
   typeCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -514,30 +606,115 @@ const s = StyleSheet.create({
     lineHeight: 16,
   },
 
-  previewWrap: {
-    marginVertical: 10, borderRadius: Radius.xl,
-    ...Platform.select({
-      ios:     { shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
-      android: { elevation: 8 },
-    }),
+  /* ── Step 2 Inputs ── */
+  /* 1. Name Card */
+  nameCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 14,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    marginTop: 4,
   },
-  previewCard:    { height: 130, borderRadius: Radius.xl, overflow: 'hidden' },
-  previewBlob1:   { position: 'absolute', width: 160, height: 160, borderRadius: 80, top: -50, right: -40 },
-  previewBlob2:   { position: 'absolute', width: 100, height: 100, borderRadius: 50, bottom: -30, left: 30 },
-  previewContent: { flex: 1, padding: 16, justifyContent: 'space-between' },
-  previewTop:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  iconCircle:     { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  typePill:       { paddingHorizontal: 10, paddingVertical: 3.5, borderRadius: 99 },
-  typeText:       { fontSize: 9.5, fontWeight: '700', letterSpacing: 1 },
-  balanceValue:   { fontSize: 24, fontWeight: '800', letterSpacing: -0.5, includeFontPadding: false },
-  accountName:    { fontSize: 13.5, fontWeight: '600', includeFontPadding: false },
+  avatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nameInputWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  nameInput: {
+    fontSize: 16,
+    fontWeight: '700',
+    paddingVertical: 2,
+  },
 
-  fieldLabel: { marginTop: 12, marginBottom: 6 },
-  input: { height: 48, borderRadius: Radius.lg, paddingHorizontal: 14, fontSize: 15 },
+  /* 2. Colors */
+  colorScroll: {
+    gap: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  colorDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  colorDotActive: {
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    transform: [{ scale: 1.2 }],
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
 
-  chipRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 2 },
-  chip:     { paddingHorizontal: 13, paddingVertical: 7, borderRadius: Radius.full },
+  /* 3. Currency */
+  currencyHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  currencyActivePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
+  currencyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+  },
+  currencyChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
 
+  /* 4. Balance Card */
+  balanceCard: {
+    padding: 16,
+    borderRadius: Radius.xl,
+    borderWidth: 1.5,
+    gap: 6,
+  },
+  balanceCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  balanceSymbol: {
+    fontSize: 28,
+    fontWeight: '800',
+    includeFontPadding: false,
+  },
+  balanceBigInput: {
+    flex: 1,
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    includeFontPadding: false,
+    paddingVertical: 2,
+  },
+
+  /* 5. Customization Drawer */
   accordionToggle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -545,28 +722,56 @@ const s = StyleSheet.create({
     padding: 14,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    marginTop: 16,
+    marginTop: 4,
   },
-  accordionContent: {
-    paddingTop: 8,
-    gap: 4,
+  iconGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  toggleSwitch: {
+    width: 46,
+    height: 28,
+    borderRadius: 14,
+    padding: 3,
+    justifyContent: 'center',
+  },
+  toggleThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
   },
 
-  colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingVertical: 4 },
-  colorDot: { width: 34, height: 34, borderRadius: 17 },
-  iconRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  iconOption: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-
-  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, marginBottom: 4 },
-  toggle:    { width: 46, height: 28, borderRadius: 14, padding: 3, justifyContent: 'center' },
-  toggleThumb: { width: 22, height: 22, borderRadius: 11 },
-
-  saveBtn: {
+  /* Main Action */
+  mainSaveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     height: 52,
-    borderRadius: Radius.lg,
+    borderRadius: Radius.xl,
+    marginTop: 8,
+  },
+  mainSaveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    includeFontPadding: false,
   },
 });
