@@ -72,7 +72,7 @@ export default function AccountsScreen() {
             <AppText variant="caption" style={{ color: colors.text.secondary, letterSpacing: 1.5 }}>
               TOTAL NET WORTH
             </AppText>
-            <AppText style={[s.heroBalance, { color: colors.text.primary }]}>
+            <AppText style={[s.heroBalance, { color: colors.text.primary, paddingVertical: 15, }]}>
               {symbol}{totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </AppText>
           </Animated.View>
