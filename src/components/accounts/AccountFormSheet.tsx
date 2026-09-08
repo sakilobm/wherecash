@@ -7,15 +7,16 @@
  *       1. Account Name (with color/icon avatar)
  *       2. Accent Color (inline horizontal swatches)
  *       3. Currency Selector (shows default from setup, tap to expand)
- *       4. Big Tactile Balance Input (tap to focus numeric decimal keypad)
+ *       4. Big Tactile Balance Display with Live Calculator Keypad (+, -, ×, ÷, ⌫)
  *       5. Customization Drawer (Icon grid & Set as Primary toggle)
- * @associatedFiles src/features/accounts/hooks/useAccountsScreen.ts, src/app/accounts.tsx
+ *   - Sticky Bottom Action Bar with simple, punchy "Next" / "Save" buttons.
+ * @associatedFiles src/features/accounts/hooks/useAccountsScreen.ts, src/app/accounts.tsx, src/utils/calculator.ts
  */
 
 import React, { useState, useEffect, useRef, type ComponentProps } from 'react';
 import {
   View, ScrollView, StyleSheet, Pressable, Modal,
-  Platform, TextInput, KeyboardAvoidingView, Dimensions,
+  Platform, TextInput, KeyboardAvoidingView, Dimensions, Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,6 +33,11 @@ import {
 } from '@features/accounts/hooks/useAccountsScreen';
 import type { Account, AccountType, CurrencyCode } from '@store/types';
 import { useAuthStore } from '@store/authStore';
+import {
+  CALCULATOR_KEYS,
+  applyCalculatorKey,
+  evaluateExpression,
+} from '@/utils/calculator';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -125,9 +131,7 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
   const [form, setForm] = useState<AccountFormState>(DEFAULT_ACCOUNT_FORM);
 
   const userCurrency = (useAuthStore((s) => s.user?.currency) as CurrencyCode) ?? 'INR';
-
-  const nameInputRef    = useRef<TextInput>(null);
-  const balanceInputRef = useRef<TextInput>(null);
+  const nameInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (visible) {
@@ -169,6 +173,17 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
   const set = <K extends keyof AccountFormState>(key: K, val: AccountFormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: val }));
 
+  const hasOperation = /[+\-×÷]/.test(form.balance);
+  const evaluatedBalance = evaluateExpression(form.balance);
+
+  const handleSave = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onSave({
+      ...form,
+      balance: String(evaluatedBalance),
+    });
+  };
+
   const sheetBg = isDark ? colors.background.secondary : '#FFFFFF';
   const inputBg = isDark ? colors.background.card : '#F8FAFC';
   const currentSymbol = CURRENCY_SYMBOLS[form.currency] || '$';
@@ -178,7 +193,7 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.overlay}>
         <Pressable style={[s.backdrop, { backgroundColor: colors.overlay.heavy }]} onPress={onClose} />
 
-        <Animated.View style={[s.sheet, sheetStyle, { backgroundColor: sheetBg, paddingBottom: insets.bottom + 16, shadowColor: colors.black }]}>
+        <Animated.View style={[s.sheet, sheetStyle, { backgroundColor: sheetBg, shadowColor: colors.black }]}>
           <View style={[s.handle, { backgroundColor: colors.glass.backgroundStrong }]} />
 
           {/* ── Top Bar ── */}
@@ -215,7 +230,9 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
                 <Ionicons name="close" size={22} color={colors.text.secondary} />
               </Pressable>
             ) : (
-              <View style={{ width: 38 }} />
+              <Pressable onPress={handleSave} style={[s.topSaveBtn, { backgroundColor: form.color }]}>
+                <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+              </Pressable>
             )}
           </View>
 
@@ -298,25 +315,11 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
                     );
                   })}
                 </View>
-
-                {/* Continue to Step 2 Button */}
-                <Pressable
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    setStep(2);
-                  }}
-                  style={[s.mainSaveBtn, { backgroundColor: form.color, marginTop: 8 }]}
-                >
-                  <AppText style={s.mainSaveBtnText}>
-                    Continue to Details
-                  </AppText>
-                  <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-                </Pressable>
               </Animated.View>
             )}
 
             {/* ══════════════════════════════════════════════════════
-                STEP 2: IVY WALLET ORDER (Name -> Color -> Currency -> Balance)
+                STEP 2: IVY WALLET ORDER (Name -> Color -> Currency -> Balance Calculator)
                ══════════════════════════════════════════════════════ */}
             {(step === 2 || editingAccount) && (
               <Animated.View entering={FadeIn.duration(220)} style={{ gap: 14 }}>
@@ -424,38 +427,93 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
                   )}
                 </View>
 
-                {/* 4. Account Balance (Tactile Large Input + Keypad) */}
-                <Pressable
-                  onPress={() => balanceInputRef.current?.focus()}
-                  style={[s.balanceCard, { backgroundColor: inputBg, borderColor: form.color + '38' }]}
-                >
+                {/* 4. Tactile Balance Card with Live Calculated Evaluation */}
+                <View style={[s.balanceCard, { backgroundColor: inputBg, borderColor: form.color + '38' }]}>
                   <View style={s.balanceCardHeader}>
                     <AppText variant="caption" color={colors.text.tertiary} style={s.tinyHeader}>
                       STARTING BALANCE
                     </AppText>
-                    <AppText variant="caption" color={form.color} style={{ fontWeight: '600' }}>
-                      Tap to edit
-                    </AppText>
+                    {hasOperation && (
+                      <AppText variant="caption" color={form.color} style={{ fontWeight: '700' }}>
+                        = {currentSymbol}{evaluatedBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </AppText>
+                    )}
                   </View>
 
                   <View style={s.balanceRow}>
                     <AppText style={[s.balanceSymbol, { color: form.color }]}>
                       {currentSymbol}
                     </AppText>
-                    <TextInput
-                      ref={balanceInputRef}
-                      style={[s.balanceBigInput, { color: colors.text.primary }]}
-                      value={form.balance}
-                      onChangeText={(v) => set('balance', v.replace(/[^0-9.]/g, ''))}
-                      placeholder="0.00"
-                      placeholderTextColor={colors.text.tertiary}
-                      keyboardType="decimal-pad"
-                      returnKeyType="done"
-                    />
+                    <AppText
+                      style={[
+                        s.balanceBigDisplay,
+                        { color: colors.text.primary },
+                        form.balance.length > 9 && { fontSize: 24 },
+                        form.balance.length > 14 && { fontSize: 20 },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                    >
+                      {form.balance || '0'}
+                    </AppText>
                   </View>
-                </Pressable>
+                </View>
 
-                {/* 5. Customization Drawer (Icons & Primary Default) */}
+                {/* 5. Ivy Wallet Calculator Keypad (No System Keyboard Required!) */}
+                <View style={s.keypadContainer}>
+                  {CALCULATOR_KEYS.map((row, rIdx) => (
+                    <View key={rIdx} style={s.keypadRow}>
+                      {row.map((key) => {
+                        const isOperator = ['+', '-', '×', '÷'].includes(key);
+                        const isBackspace = key === '⌫';
+                        return (
+                          <Pressable
+                            key={key}
+                            onPress={() => {
+                              Keyboard.dismiss();
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              const next = applyCalculatorKey(form.balance || '0', key);
+                              set('balance', next);
+                            }}
+                            style={({ pressed }) => [
+                              s.keypadBtn,
+                              {
+                                backgroundColor: isOperator
+                                  ? form.color + '18'
+                                  : isBackspace
+                                  ? (isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)')
+                                  : (isDark ? 'rgba(255, 255, 255, 0.05)' : '#FFFFFF'),
+                                borderColor: isOperator
+                                  ? form.color + '35'
+                                  : isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+                                opacity: pressed ? 0.6 : 1,
+                              },
+                            ]}
+                          >
+                            {isBackspace ? (
+                              <Ionicons name="backspace-outline" size={20} color={colors.status.expense} />
+                            ) : (
+                              <AppText
+                                style={[
+                                  s.keypadBtnText,
+                                  {
+                                    color: isOperator ? form.color : colors.text.primary,
+                                    fontWeight: isOperator ? '800' : '600',
+                                    fontSize: isOperator ? 20 : 18,
+                                  },
+                                ]}
+                              >
+                                {key}
+                              </AppText>
+                            )}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+
+                {/* 6. Customization Drawer (Icons & Primary Default) */}
                 <Pressable
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -520,23 +578,48 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
                     </Pressable>
                   </Animated.View>
                 )}
-
-                {/* ── Main Action Button ── */}
-                <Pressable
-                  onPress={() => {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    onSave(form);
-                  }}
-                  style={({ pressed }) => [s.mainSaveBtn, { backgroundColor: form.color, opacity: pressed ? 0.85 : 1 }]}
-                >
-                  <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                  <AppText style={s.mainSaveBtnText}>
-                    {editingAccount ? 'Save Changes' : 'Create Account'}
-                  </AppText>
-                </Pressable>
               </Animated.View>
             )}
           </ScrollView>
+
+          {/* ── Sticky Bottom Action Bar (Next / Save) ── */}
+          <View
+            style={[
+              s.stickyFooter,
+              {
+                backgroundColor: sheetBg,
+                borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+                paddingBottom: Math.max(insets.bottom, 14),
+              },
+            ]}
+          >
+            {step === 1 && !editingAccount ? (
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setStep(2);
+                }}
+                style={({ pressed }) => [
+                  s.stickyBtn,
+                  { backgroundColor: form.color, opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <AppText style={s.stickyBtnText}>Next</AppText>
+                <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={handleSave}
+                style={({ pressed }) => [
+                  s.stickyBtn,
+                  { backgroundColor: form.color, opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                <AppText style={s.stickyBtnText}>Save</AppText>
+              </Pressable>
+            )}
+          </View>
         </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
@@ -547,7 +630,7 @@ const s = StyleSheet.create({
   overlay:  { flex: 1, justifyContent: 'flex-end' },
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   sheet: {
-    borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: SH * 0.92,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: SH * 0.94,
     ...Platform.select({
       ios:     { shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: 0, height: -6 } },
       android: { elevation: 20 },
@@ -557,6 +640,7 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 12 },
   headerBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center', gap: 2 },
+  topSaveBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
 
   stepBarContainer: {
     flexDirection: 'row',
@@ -570,7 +654,7 @@ const s = StyleSheet.create({
     borderRadius: 2,
   },
 
-  scroll: { paddingHorizontal: 20, paddingBottom: 28, gap: 14 },
+  scroll: { paddingHorizontal: 20, paddingBottom: 24, gap: 14 },
   section: { gap: 6 },
   tinyHeader: { fontWeight: '700', letterSpacing: 0.8 },
 
@@ -705,16 +789,36 @@ const s = StyleSheet.create({
     fontWeight: '800',
     includeFontPadding: false,
   },
-  balanceBigInput: {
-    flex: 1,
-    fontSize: 32,
+  balanceBigDisplay: {
+    fontSize: 30,
     fontWeight: '800',
     letterSpacing: -0.5,
     includeFontPadding: false,
-    paddingVertical: 2,
+    flex: 1,
   },
 
-  /* 5. Customization Drawer */
+  /* 5. Keypad */
+  keypadContainer: {
+    gap: 8,
+    marginTop: 2,
+  },
+  keypadRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  keypadBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  keypadBtnText: {
+    includeFontPadding: false,
+  },
+
+  /* 6. Customization Drawer */
   accordionToggle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -758,17 +862,21 @@ const s = StyleSheet.create({
     borderRadius: 11,
   },
 
-  /* Main Action */
-  mainSaveBtn: {
+  /* Sticky Bottom Footer */
+  stickyFooter: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  stickyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    height: 52,
+    height: 50,
     borderRadius: Radius.xl,
-    marginTop: 8,
   },
-  mainSaveBtnText: {
+  stickyBtnText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
