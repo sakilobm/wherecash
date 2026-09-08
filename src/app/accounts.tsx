@@ -72,7 +72,7 @@ export default function AccountsScreen() {
             <AppText variant="caption" style={{ color: colors.text.secondary, letterSpacing: 1.5 }}>
               TOTAL NET WORTH
             </AppText>
-            <AppText style={[s.heroBalance, { color: colors.text.primary, paddingVertical: 15, }]}>
+            <AppText variant="numeric" style={[s.heroBalance, { color: colors.text.primary }]}>
               {symbol}{totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </AppText>
           </Animated.View>
@@ -167,9 +167,18 @@ const s = StyleSheet.create({
     }),
   },
   scrollContent: { paddingBottom: Spacing['8'] },
-  hero: { alignItems: 'center', paddingTop: 6, paddingBottom: 16, gap: 4 },
-  heroEmpty: { paddingTop: 26, paddingBottom: 26 },
-  heroBalance: { fontSize: 34, fontWeight: '800', letterSpacing: -0.5, includeFontPadding: false },
+  hero: { alignItems: 'center', paddingTop: 12, paddingBottom: 18, gap: 6 },
+  heroEmpty: { paddingTop: 30, paddingBottom: 28 },
+  heroBalance: {
+    fontSize: 36,
+    fontWeight: '800',
+    lineHeight: 46,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    letterSpacing: Platform.OS === 'android' ? 0 : -0.5,
+    includeFontPadding: false,
+    textAlign: 'center',
+  },
   carouselWrapper: { paddingVertical: 10 },
   detailsSection: { paddingHorizontal: 20, marginTop: Spacing['2'] },
 });
