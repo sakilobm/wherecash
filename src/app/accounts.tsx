@@ -1,39 +1,47 @@
 /**
  * @file accounts.tsx
  * @architecture Presentation Layer — Lean View Shell
- * @description Accounts management screen. Pure declarative orchestrator: reads a
- *   single contract from useAccountsScreen and renders extracted components. Zero
- *   business logic, zero raw useState, zero store imports.
- * @associatedFiles src/features/accounts/hooks/useAccountsScreen.ts,
- *   src/components/accounts/ (AccountCard, AccountDots, AccountStatCard, AccountFormSheet)
+ * @description Modernized Accounts management screen view shell (< 150 lines).
+ *   Reads state from useAccountsScreen and renders:
+ *   - Total Net Worth Hero
+ *   - 3D AccountCard Carousel with Primary Badge
+ *   - AccountActionBar (Transfer, Edit, Set Primary, Delete)
+ *   - AccountCashFlowRow (Monthly Inflow & Outflow)
+ *   - AccountRecentActivity with shortcut to full activity
+ *   - Integrated TransferSheet & AccountFormSheet
  */
 
+import React from 'react';
 import { View, ScrollView, StyleSheet, Pressable, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  useAccountsScreen, CARD_W, PAGE_W,
-} from '@features/accounts/hooks/useAccountsScreen';
+
+import { useAccountsScreen, PAGE_W } from '@features/accounts/hooks/useAccountsScreen';
 import { AccountCard } from '@components/accounts/AccountCard';
 import { AccountDots } from '@components/accounts/AccountDots';
-import { AccountStatCard } from '@components/accounts/AccountStatCard';
+import { AccountActionBar } from '@components/accounts/AccountActionBar';
+import { AccountCashFlowRow } from '@components/accounts/AccountCashFlowRow';
+import { AccountRecentActivity } from '@components/accounts/AccountRecentActivity';
+import { AccountEmptyState } from '@components/accounts/AccountEmptyState';
 import { AccountFormSheet } from '@components/accounts/AccountFormSheet';
+import { TransferSheet } from '@components/home/TransferSheet';
 import { ConfirmModal } from '@components/ConfirmModal';
 import { AppText } from '@components/AppText';
 import { useTheme } from '@hooks/useTheme';
 import { useFormatCurrency } from '@hooks/useFormatCurrency';
-import { CURRENCY_SYMBOLS } from '@store/types';
-import { Radius } from '@constants/Dimensions';
+import { Spacing } from '@constants/index';
 
 export default function AccountsScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
+  const { symbol } = useFormatCurrency();
+
   const {
     accounts, selectedAccount, totalBalance, accColor, selectedIdx,
-    scrollRef, bgStyle, formSheet, deleteConfirm, handlers,
+    scrollRef, bgStyle, formSheet, transferSheet, deleteConfirm, handlers,
+    accountInflow, accountOutflow, recentTransactions,
   } = useAccountsScreen();
-  const { symbol } = useFormatCurrency();
 
   return (
     <View style={[s.root, { backgroundColor: colors.background.primary }]}>
@@ -46,244 +54,90 @@ export default function AccountsScreen() {
             <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
           </Pressable>
           <View style={s.headerCenter}>
-            <AppText variant="headingMD" style={{ color: colors.text.primary, fontWeight: '800' }}>My Accounts</AppText>
+            <AppText variant="headingMD" style={{ color: colors.text.primary, fontWeight: '800' }}>
+              My Accounts
+            </AppText>
             <AppText variant="caption" style={{ color: colors.text.secondary }}>
               {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
             </AppText>
           </View>
-          <Pressable onPress={handlers.add} style={({ pressed }) => [s.addBtn, { backgroundColor: accColor, opacity: pressed ? 0.8 : 1, shadowColor: colors.black }]}>
-            <Ionicons name="add" size={22} color={colors.white} />
+          <Pressable onPress={() => handlers.add()} style={({ pressed }) => [s.addBtn, { backgroundColor: accColor, opacity: pressed ? 0.8 : 1 }]}>
+            <Ionicons name="add" size={22} color="#FFFFFF" />
           </Pressable>
         </View>
 
-        {/* ── Net Worth ── */}
-        <Animated.View entering={FadeIn.delay(100).duration(400)} style={s.hero}>
-          <AppText variant="caption" style={{ color: colors.text.secondary, letterSpacing: 1.5 }}>
-            TOTAL NET WORTH
-          </AppText>
-          <AppText style={[s.heroBalance, { color: colors.text.primary }]}>
-            {symbol}{totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </AppText>
-        </Animated.View>
-
-        {/* ── Carousel ── */}
-        {accounts.length === 0 ? (
-          <Animated.View entering={FadeIn.duration(400)} style={s.emptyCards}>
-            <View style={[s.emptyPlaceholder, { borderColor: colors.text.tertiary + '30' }]}>
-              <Ionicons name="wallet-outline" size={40} color={colors.text.tertiary} />
-              <AppText variant="bodyMD" color={colors.text.tertiary} style={{ marginTop: 12 }}>No accounts yet</AppText>
-              <Pressable onPress={handlers.add} style={[s.emptyAddBtn, { backgroundColor: colors.brand.primary }]}>
-                <AppText style={{ color: colors.white, fontWeight: '700' }}>Add First Account</AppText>
-              </Pressable>
-            </View>
-          </Animated.View>
-        ) : (
-          <>
-            <View style={s.carouselWrapper}>
-              <ScrollView
-                ref={scrollRef} horizontal pagingEnabled={false}
-                snapToInterval={PAGE_W} decelerationRate="fast"
-                disableIntervalMomentum showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingLeft: 24, paddingRight: 24, gap: 16 }}
-                onScroll={handlers.scroll} scrollEventThrottle={16} style={{ flexGrow: 0 }}
-              >
-                {accounts.map((acc, i) => (
-                  <AccountCard key={acc.id} account={acc} isActive={i === selectedIdx} onPress={() => handlers.edit(acc)} />
-                ))}
-              </ScrollView>
-            </View>
-            <AccountDots count={accounts.length} activeIdx={selectedIdx} color={accColor} />
-          </>
-        )}
-
-        {/* ── Selected Account Detail ── */}
-        {selectedAccount && (
-          <ScrollView key={selectedAccount.id} showsVerticalScrollIndicator={false} contentContainerStyle={s.details}>
-            <View style={s.statsRow}>
-              <AccountStatCard label="Balance"  value={`${CURRENCY_SYMBOLS[selectedAccount.currency] ?? '$'}${selectedAccount.balance.toLocaleString('en-US', { minimumFractionDigits: 0 })}`} icon="cash-outline"   color={accColor} onPress={() => handlers.edit(selectedAccount)} />
-              <AccountStatCard label="Type"     value={selectedAccount.type.charAt(0).toUpperCase() + selectedAccount.type.slice(1)}          icon="layers-outline" color={accColor} />
-              <AccountStatCard label="Currency" value={selectedAccount.currency}                                                               icon="globe-outline"  color={accColor} />
-            </View>
-
-            {/* Investment specific Projection & Target Goal Features */}
-            {selectedAccount.type === 'investment' && (
-              <Animated.View entering={FadeIn.delay(200).duration(400)} style={[s.featureCard, { backgroundColor: colors.surface.sheet, shadowColor: colors.black, borderColor: colors.glass.border }]}>
-                <View style={s.featureHeader}>
-                  <Ionicons name="trending-up" size={18} color={accColor} />
-                  <AppText variant="labelMD" style={{ color: colors.text.primary, fontWeight: '700', marginLeft: 6 }}>
-                    Investment Projections & Goals
-                  </AppText>
-                </View>
-
-                {/* Progress bar */}
-                {(() => {
-                  const currentVal = selectedAccount.balance;
-                  const target = Math.max(10000, Math.ceil((currentVal * 1.6) / 10000) * 10000);
-                  const progress = Math.min(1, currentVal / target);
-                  const percent = Math.round(progress * 100);
-                  const sym = CURRENCY_SYMBOLS[selectedAccount.currency] ?? '$';
-
-                  return (
-                    <View style={s.goalSection}>
-                      <View style={s.goalInfo}>
-                        <AppText variant="caption" color={colors.text.secondary}>Goal Progress</AppText>
-                        <AppText variant="labelSM" style={{ color: accColor, fontWeight: '800' }}>
-                          {percent}% achieved
-                        </AppText>
-                      </View>
-                      
-                      <View style={[s.progressTrack, { backgroundColor: isDark ? colors.glass.backgroundStrong : 'rgba(0,0,0,0.06)' }]}>
-                        <View style={[s.progressBar, { width: `${percent}%`, backgroundColor: accColor }]} />
-                      </View>
-
-                      <View style={s.goalTargetRow}>
-                        <AppText variant="caption" color={colors.text.tertiary}>
-                          Current: {sym}{currentVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                        </AppText>
-                        <AppText variant="caption" style={{ color: colors.text.secondary, fontWeight: '600' }}>
-                          Target: {sym}{target.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                        </AppText>
-                      </View>
-                    </View>
-                  );
-                })()}
-
-                <View style={[s.divider, { backgroundColor: colors.glass.border }]} />
-
-                <AppText variant="labelSM" color={colors.text.tertiary} style={{ marginBottom: 8, letterSpacing: 0.5 }}>
-                  FUTURE GROWTH ESTIMATES (12% CAGR)
-                </AppText>
-                <View style={s.projectionGrid}>
-                  <View style={[s.projBox, { backgroundColor: isDark ? colors.glass.background : colors.background.primary, borderColor: colors.glass.border }]}>
-                    <View style={s.projHeader}>
-                      <AppText variant="labelSM" color={colors.text.secondary}>5 Years</AppText>
-                      <View style={[s.growthBadge, { backgroundColor: colors.status.income + '15' }]}>
-                        <AppText variant="caption" style={{ color: colors.status.income, fontWeight: '700', fontSize: 10 }}>+76%</AppText>
-                      </View>
-                    </View>
-                    <AppText variant="labelLG" style={{ color: colors.text.primary, fontWeight: '800', marginTop: 4 }}>
-                      {(CURRENCY_SYMBOLS[selectedAccount.currency] ?? '$')}{Math.round(selectedAccount.balance * 1.7623).toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                    </AppText>
-                  </View>
-
-                  <View style={[s.projBox, { backgroundColor: isDark ? colors.glass.background : colors.background.primary, borderColor: colors.glass.border }]}>
-                    <View style={s.projHeader}>
-                      <AppText variant="labelSM" color={colors.text.secondary}>10 Years</AppText>
-                      <View style={[s.growthBadge, { backgroundColor: colors.status.income + '15' }]}>
-                        <AppText variant="caption" style={{ color: colors.status.income, fontWeight: '700', fontSize: 10 }}>+210%</AppText>
-                      </View>
-                    </View>
-                    <AppText variant="labelLG" style={{ color: colors.text.primary, fontWeight: '800', marginTop: 4 }}>
-                      {(CURRENCY_SYMBOLS[selectedAccount.currency] ?? '$')}{Math.round(selectedAccount.balance * 3.1058).toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                    </AppText>
-                  </View>
-                </View>
-              </Animated.View>
-            )}
-
-            {/* Credit Card Utilization Features */}
-            {selectedAccount.type === 'credit' && (
-              <Animated.View entering={FadeIn.delay(200).duration(400)} style={[s.featureCard, { backgroundColor: colors.surface.sheet, shadowColor: colors.black, borderColor: colors.glass.border }]}>
-                <View style={s.featureHeader}>
-                  <Ionicons name="card-outline" size={18} color={accColor} />
-                  <AppText variant="labelMD" style={{ color: colors.text.primary, fontWeight: '700', marginLeft: 6 }}>
-                    Credit Limit & Utilization
-                  </AppText>
-                </View>
-
-                {/* Progress bar */}
-                {(() => {
-                  const currentBalance = selectedAccount.balance;
-                  const limit = Math.max(50000, Math.ceil((currentBalance * 3.5) / 10000) * 10000);
-                  const utilization = limit > 0 ? Math.min(1, currentBalance / limit) : 0;
-                  const percent = Math.round(utilization * 100);
-                  const available = limit - currentBalance;
-                  const sym = CURRENCY_SYMBOLS[selectedAccount.currency] ?? '$';
-
-                  const utilColor = percent < 30 ? colors.status.income : percent < 70 ? colors.status.warning : colors.status.expense;
-                  const utilMsg = percent < 30 ? 'Excellent utilization' : percent < 70 ? 'Moderate utilization' : 'High credit usage!';
-
-                  return (
-                    <View style={s.goalSection}>
-                      <View style={s.goalInfo}>
-                        <AppText variant="caption" color={colors.text.secondary}>Usage Ratio</AppText>
-                        <AppText variant="labelSM" style={{ color: utilColor, fontWeight: '800' }}>
-                          {percent}% ({utilMsg})
-                        </AppText>
-                      </View>
-                      
-                      <View style={[s.progressTrack, { backgroundColor: isDark ? colors.glass.backgroundStrong : 'rgba(0,0,0,0.06)' }]}>
-                        <View style={[s.progressBar, { width: `${percent}%`, backgroundColor: utilColor }]} />
-                      </View>
-
-                      <View style={s.goalTargetRow}>
-                        <AppText variant="caption" color={colors.text.tertiary}>
-                          Available limit: {sym}{available.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                        </AppText>
-                        <AppText variant="caption" style={{ color: colors.text.secondary, fontWeight: '600' }}>
-                          Total Limit: {sym}{limit.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                        </AppText>
-                      </View>
-                    </View>
-                  );
-                })()}
-              </Animated.View>
-            )}
-
-            <View style={[s.actionsRow, { marginTop: 16 }]}>
-              <Pressable onPress={() => handlers.edit(selectedAccount)} style={({ pressed }) => [s.actionBtn, { backgroundColor: accColor + '18', opacity: pressed ? 0.7 : 1 }]}>
-                <Ionicons name="pencil" size={16} color={accColor} />
-                <AppText variant="labelMD" style={{ color: accColor, fontWeight: '600' }}>Edit</AppText>
-              </Pressable>
-              {!selectedAccount.isDefault ? (
-                <Pressable onPress={() => handlers.setDefault(selectedAccount)} style={({ pressed }) => [s.actionBtn, { backgroundColor: colors.glass.backgroundMid, opacity: pressed ? 0.7 : 1 }]}>
-                  <Ionicons name="star-outline" size={16} color={colors.text.secondary} />
-                  <AppText variant="labelMD" style={{ color: colors.text.secondary, fontWeight: '600' }}>Set Default</AppText>
-                </Pressable>
-              ) : (
-                <View style={[s.actionBtn, { backgroundColor: accColor + '0F' }]}>
-                  <Ionicons name="star" size={16} color={accColor} />
-                  <AppText variant="labelMD" style={{ color: accColor, fontWeight: '600' }}>Default</AppText>
-                </View>
-              )}
-              <Pressable onPress={() => handlers.deleteConfirm(selectedAccount)} style={({ pressed }) => [s.actionBtn, { backgroundColor: colors.status.expense + '15', opacity: pressed ? 0.7 : 1 }]}>
-                <Ionicons name="trash-outline" size={16} color={colors.status.expense} />
-                <AppText variant="labelMD" style={{ color: colors.status.expense, fontWeight: '600' }}>Delete</AppText>
-              </Pressable>
-            </View>
-
-            <AppText variant="labelMD" style={{ color: colors.text.secondary, marginTop: 24, marginBottom: 12 }}>
-              ALL ACCOUNTS
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
+          {/* ── Net Worth Hero with Dynamic Spacing ── */}
+          <Animated.View entering={FadeIn.delay(100).duration(400)} style={[s.hero, accounts.length === 0 && s.heroEmpty]}>
+            <AppText variant="caption" style={{ color: colors.text.secondary, letterSpacing: 1.5 }}>
+              TOTAL NET WORTH
             </AppText>
-            <View style={{ gap: 8 }}>
-              {accounts.map((acc, idx) => {
-                const isSel = idx === selectedIdx;
-                return (
-                  <Pressable key={acc.id} onPress={() => handlers.scrollToIdx(idx)}
-                    style={({ pressed }) => [s.accRow, { backgroundColor: isSel ? acc.color + '18' : colors.glass.background, borderColor: isSel ? acc.color + '40' : 'transparent', opacity: pressed ? 0.75 : 1 }]}
-                  >
-                    <View style={[s.accRowIcon, { backgroundColor: acc.color + '22' }]}>
-                      <Ionicons name={acc.icon as any} size={18} color={acc.color} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <AppText variant="labelMD" style={{ color: colors.text.primary, fontWeight: '600' }}>{acc.name}</AppText>
-                      <AppText variant="caption" style={{ color: colors.text.secondary }}>{acc.type}</AppText>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <AppText variant="labelMD" style={{ color: acc.color, fontWeight: '700' }}>{CURRENCY_SYMBOLS[acc.currency] ?? '$'}{acc.balance.toLocaleString('en-US', { minimumFractionDigits: 0 })}</AppText>
-                      {acc.isDefault && <AppText variant="caption" style={{ color: acc.color + 'AA', fontSize: 10 }}>default</AppText>}
-                    </View>
-                  </Pressable>
-                );
-              })}
+            <AppText style={[s.heroBalance, { color: colors.text.primary }]}>
+              {symbol}{totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </AppText>
+          </Animated.View>
+
+          {/* ── Accounts Carousel or Rich Empty State ── */}
+          {accounts.length === 0 ? (
+            <AccountEmptyState onAdd={handlers.add} />
+          ) : (
+            <>
+              <View style={s.carouselWrapper}>
+                <ScrollView
+                  ref={scrollRef} horizontal pagingEnabled={false}
+                  snapToInterval={PAGE_W} decelerationRate="fast"
+                  disableIntervalMomentum showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingLeft: 24, paddingRight: 24, gap: 16 }}
+                  onScroll={handlers.scroll} scrollEventThrottle={16} style={{ flexGrow: 0 }}
+                >
+                  {accounts.map((acc, i) => (
+                    <AccountCard key={acc.id} account={acc} isActive={i === selectedIdx} onPress={() => handlers.edit(acc)} />
+                  ))}
+                </ScrollView>
+              </View>
+              <AccountDots count={accounts.length} activeIdx={selectedIdx} color={accColor} />
+            </>
+          )}
+
+          {/* ── Selected Account Section ── */}
+          {selectedAccount && (
+            <View style={s.detailsSection}>
+              {/* Action Ribbon: Transfer, Edit, Make Primary, Delete */}
+              <AccountActionBar
+                account={selectedAccount}
+                onTransfer={handlers.openTransfer}
+                onEdit={() => handlers.edit(selectedAccount)}
+                onSetDefault={() => handlers.setDefault(selectedAccount)}
+                onDelete={() => handlers.deleteConfirm(selectedAccount)}
+              />
+
+              {/* Monthly Inflow / Outflow for this Account */}
+              <AccountCashFlowRow
+                inflow={accountInflow}
+                outflow={accountOutflow}
+                symbol={symbol}
+              />
+
+              {/* Recent Activity for this specific account */}
+              <AccountRecentActivity
+                transactions={recentTransactions}
+                symbol={symbol}
+                onViewAll={handlers.viewAllActivity}
+              />
             </View>
-          </ScrollView>
-        )}
+          )}
+        </ScrollView>
       </SafeAreaView>
 
+      {/* ── Modals & Sheets ── */}
+      <TransferSheet
+        visible={transferSheet.isVisible}
+        onClose={transferSheet.close}
+      />
       <AccountFormSheet
         visible={formSheet.isVisible}
         editingAccount={formSheet.editingAccount}
+        initialPreset={formSheet.initialPreset}
         onClose={formSheet.close}
         onSave={handlers.save}
       />
@@ -300,97 +154,22 @@ export default function AccountsScreen() {
 }
 
 const s = StyleSheet.create({
-  root:    { flex: 1 },
+  root: { flex: 1 },
   safeArea: { flex: 1 },
-
-  header:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
-  headerBtn:    { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
+  headerBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center', gap: 1 },
   addBtn: {
     width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
     ...Platform.select({
-      ios:     { shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+      ios: { shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
       android: { elevation: 6 },
     }),
   },
-
-  hero:        { alignItems: 'center', paddingTop: 4, paddingBottom: 20, gap: 6 },
-  heroBalance: { fontSize: 36, fontWeight: '800', letterSpacing: -0.5, lineHeight: 50, includeFontPadding: false },
-
-  carouselWrapper: { paddingVertical: 14 },
-
-  emptyCards:       { alignItems: 'center', paddingVertical: 24, paddingHorizontal: 24 },
-  emptyPlaceholder: { width: CARD_W, height: 210, borderRadius: Radius.xl, borderWidth: 2, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4 },
-  emptyAddBtn:      { marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, borderRadius: Radius.full },
-
-  details:    { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 },
-  statsRow:   { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  actionsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  actionBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: Radius.full },
-
-  accRow:     { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: Radius.lg, borderWidth: 1 },
-  accRowIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-
-  featureCard: {
-    borderRadius: Radius.lg,
-    padding: 16,
-    borderWidth: 1,
-    marginBottom: 16,
-    ...Platform.select({
-      ios: { shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
-      android: { elevation: 2 },
-    }),
-  },
-  featureHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  goalSection: {
-    gap: 8,
-  },
-  goalInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  progressBar: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  goalTargetRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  divider: {
-    height: 1,
-    marginVertical: 14,
-  },
-  projectionGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  projBox: {
-    flex: 1,
-    padding: 12,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-  },
-  projHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  growthBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
+  scrollContent: { paddingBottom: Spacing['8'] },
+  hero: { alignItems: 'center', paddingTop: 6, paddingBottom: 16, gap: 4 },
+  heroEmpty: { paddingTop: 26, paddingBottom: 26 },
+  heroBalance: { fontSize: 34, fontWeight: '800', letterSpacing: -0.5, includeFontPadding: false },
+  carouselWrapper: { paddingVertical: 10 },
+  detailsSection: { paddingHorizontal: 20, marginTop: Spacing['2'] },
 });

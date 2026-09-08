@@ -184,3 +184,17 @@ To resolve cognitive overload, eliminate duplicated navigation routes, prevent A
   - [HomeSpendingSection.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/features/dashboard/components/HomeSpendingSection.tsx): Top 3 spending categories with linear progress bars.
   - [HomeRecentActivitySection.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/features/dashboard/components/HomeRecentActivitySection.tsx): Top 3 recent transactions with account pill badges (`Cash Wallet`, `Prime Visa`).
   - [HomeUpcomingPaymentsSection.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/features/dashboard/components/HomeUpcomingPaymentsSection.tsx): Top 2 urgent upcoming or overdue bills with status indicators.
+
+### 11. Multi-Layer Refactoring & Headless Logic Standards (My Accounts)
+To elevate account management ergonomics, resolve zero-account spacing issues, and clarify account use cases:
+- **Lean View Shell**: Refactored [accounts.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/app/accounts.tsx) into a declarative view shell (< 150 lines) delegating all carousel scrolling, action handling, and modal triggers to the headless hook.
+- **Dynamic Net Worth Hero Spacing**: Implemented responsive top and bottom padding on the `TOTAL NET WORTH` hero (`paddingTop: 26, paddingBottom: 26` when empty vs `paddingTop: 6, paddingBottom: 16` with accounts) to prevent visual crowding against the header and cards.
+- **Headless Feature Hook**: [useAccountsScreen.ts](file:///c:/Users/sowbh/Desktop/MoneyApp/src/features/accounts/hooks/useAccountsScreen.ts) computes real-time monthly cash flow (`accountInflow`, `accountOutflow`), extracts the latest transactions per account, controls modal states (`transferSheet`, `formSheet`, `deleteConfirm`), and injects account presets.
+- **Atomic Presentation Components**:
+  - [AccountActionBar.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/components/accounts/AccountActionBar.tsx): Action ribbon with fixed 40px tactile buttons, single-line text constraints (`numberOfLines={1}`, `adjustsFontSizeToFit`), and quick actions (`Transfer`, `Edit`, `Primary`, `Delete`).
+  - [AccountCard.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/components/accounts/AccountCard.tsx): 3D carousel card featuring a prominent gold ⭐ `PRIMARY` badge next to the account type pill.
+  - [AccountCashFlowRow.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/components/accounts/AccountCashFlowRow.tsx): Real monthly inflow and outflow comparison cards for the active carousel account.
+  - [AccountRecentActivity.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/components/accounts/AccountRecentActivity.tsx): Shows the last 3 transactions recorded under the selected account with a 1-tap shortcut to full history.
+  - [AccountEmptyState.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/components/accounts/AccountEmptyState.tsx): Educational onboarding card explaining why accounts are needed in personal finance, with 1-tap quick start presets (`Bank Account`, `Cash Wallet`, `Credit Card`).
+  - [AccountFormSheet.tsx](file:///c:/Users/sowbh/Desktop/MoneyApp/src/components/accounts/AccountFormSheet.tsx): Creation sheet featuring an educational concept banner and dynamic live use-case cards explaining each account type (Checking, Cash, Savings, Credit, Investment).
+

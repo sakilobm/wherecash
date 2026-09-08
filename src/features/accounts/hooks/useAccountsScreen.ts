@@ -8,17 +8,19 @@
  *   src/components/accounts/AccountFormSheet.tsx
  */
 
-import { useState, useRef, useEffect, type ComponentProps } from 'react';
+import { useState, useRef, useEffect, useMemo, type ComponentProps } from 'react';
 import { Dimensions, type NativeSyntheticEvent, type NativeScrollEvent, ScrollView } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import {
   useSharedValue, useAnimatedStyle, interpolateColor,
 } from 'react-native-reanimated';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
+import { format } from 'date-fns';
 import { useAccountStore } from '@store/accountStore';
+import { useTransactionStore } from '@store/transactionStore';
 import { useTheme } from '@hooks/useTheme';
 import { toast } from '@store/toastStore';
-import type { Account, AccountType, CurrencyCode } from '@store/types';
+import type { Account, AccountType, CurrencyCode, Transaction } from '@store/types';
 import type { Ionicons } from '@expo/vector-icons';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -56,10 +58,13 @@ export function useAccountsScreen() {
   const addAccount    = useAccountStore((s) => s.addAccount);
   const updateAccount = useAccountStore((s) => s.updateAccount);
   const deleteAccount = useAccountStore((s) => s.deleteAccount);
+  const transactions  = useTransactionStore((s) => s.transactions);
 
   const [selectedIdx,    setSelectedIdx]    = useState(0);
   const [formVisible,    setFormVisible]    = useState(false);
+  const [transferVisible, setTransferVisible] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [initialPreset,  setInitialPreset]  = useState<Partial<AccountFormState> | undefined>(undefined);
   const [deleteTarget,   setDeleteTarget]   = useState<Account | null>(null);
 
   const params = useLocalSearchParams<{ add?: string }>();
@@ -67,6 +72,7 @@ export function useAccountsScreen() {
   useEffect(() => {
     if (params.add === 'true') {
       setEditingAccount(null);
+      setInitialPreset(undefined);
       setFormVisible(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -89,6 +95,26 @@ export function useAccountsScreen() {
   const totalBalance    = accounts.reduce((s, a) => s + (a.type === 'credit' ? -a.balance : a.balance), 0);
   const accColor        = selectedAccount?.color ?? colors.brand.primary;
 
+  const { accountInflow, accountOutflow, recentTransactions } = useMemo(() => {
+    if (!selectedAccount) return { accountInflow: 0, accountOutflow: 0, recentTransactions: [] };
+    const currentMonth = format(new Date(), 'yyyy-MM');
+    const accTxs = transactions.filter((t) => t.accountId === selectedAccount.id);
+
+    const inflow = accTxs
+      .filter((t) => t.type === 'income' && t.date.startsWith(currentMonth))
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const outflow = accTxs
+      .filter((t) => t.type === 'expense' && t.date.startsWith(currentMonth))
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const recent = [...accTxs]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 3);
+
+    return { accountInflow: inflow, accountOutflow: outflow, recentTransactions: recent };
+  }, [selectedAccount, transactions]);
+
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const x = e.nativeEvent.contentOffset.x;
     scrollX.value = x;
@@ -101,16 +127,30 @@ export function useAccountsScreen() {
     setSelectedIdx(idx);
   };
 
-  const handleAdd = () => {
+  const handleAdd = (preset?: Partial<AccountFormState>) => {
     setEditingAccount(null);
+    setInitialPreset(preset);
     setFormVisible(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const handleEdit = (account: Account) => {
     setEditingAccount(account);
+    setInitialPreset(undefined);
     setFormVisible(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const openTransfer = () => {
+    setTransferVisible(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  const closeTransfer = () => setTransferVisible(false);
+
+  const viewAllActivity = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/(tabs)/transactions');
   };
 
   const handleDeleteConfirm = (account: Account) => {
@@ -165,11 +205,21 @@ export function useAccountsScreen() {
   return {
     accounts, selectedAccount, totalBalance, accColor, selectedIdx,
     scrollRef, scrollX, bgStyle,
+    accountInflow, accountOutflow, recentTransactions,
+    transferSheet: {
+      isVisible: transferVisible,
+      open:      openTransfer,
+      close:     closeTransfer,
+    },
     formSheet: {
       isVisible:      formVisible,
       editingAccount,
+      initialPreset,
       open:           handleAdd,
-      close:          () => setFormVisible(false),
+      close:          () => {
+        setFormVisible(false);
+        setInitialPreset(undefined);
+      },
     },
     deleteConfirm: {
       target:   deleteTarget,
@@ -184,6 +234,8 @@ export function useAccountsScreen() {
       deleteConfirm: handleDeleteConfirm,
       setDefault:    handleSetDefault,
       save:          handleSave,
+      openTransfer,
+      viewAllActivity,
     },
   };
 }

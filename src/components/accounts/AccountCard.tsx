@@ -61,8 +61,16 @@ export function AccountCard({ account, isActive, onPress }: Props) {
               <View style={s.iconCircle}>
                 <Ionicons name={account.icon as IoniconName} size={22} color={colors.white} />
               </View>
-              <View style={s.typePill}>
-                <AppText style={[s.typeText, { color: colors.white + 'E6' }]}>{account.type.toUpperCase()}</AppText>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {account.isDefault && (
+                  <View style={s.primaryPill}>
+                    <Ionicons name="star" size={10} color="#F59E0B" />
+                    <AppText style={s.primaryText}>PRIMARY</AppText>
+                  </View>
+                )}
+                <View style={s.typePill}>
+                  <AppText style={[s.typeText, { color: colors.white + 'E6' }]}>{account.type.toUpperCase()}</AppText>
+                </View>
               </View>
             </View>
 
@@ -75,13 +83,6 @@ export function AccountCard({ account, isActive, onPress }: Props) {
             </View>
 
             <View style={s.bottom}>
-              {account.isDefault && (
-                <View style={s.defaultBadge}>
-                  <Ionicons name="checkmark-circle" size={12} color={colors.white + 'E6'} />
-                  <AppText style={[s.defaultText, { color: colors.white + 'E6' }]}>DEFAULT</AppText>
-                </View>
-              )}
-              <View style={{ flex: 1 }} />
               <AppText style={[s.currencyCode, { color: colors.white + '99' }]}>{account.currency}</AppText>
             </View>
           </View>
@@ -114,6 +115,21 @@ const s = StyleSheet.create({
   iconCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFFFFF38', alignItems: 'center', justifyContent: 'center' },
   typePill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, backgroundColor: '#FFFFFF33' },
   typeText:     { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  primaryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFFFFFE6',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 99,
+    shadowColor: '#000000',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  primaryText:  { fontSize: 9.5, fontWeight: '900', letterSpacing: 0.5, color: '#B45309' },
   balanceLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 1.5 },
   balanceValue: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
   accountName:  { fontSize: 14, fontWeight: '600', letterSpacing: 0.2 },

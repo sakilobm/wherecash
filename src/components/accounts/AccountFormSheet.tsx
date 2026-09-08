@@ -46,23 +46,57 @@ const CURRENCY_CODES: CurrencyCode[] = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD'
 
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: 'checking',   label: 'Checking'   },
+  { value: 'cash',       label: 'Cash'       },
   { value: 'savings',    label: 'Savings'    },
   { value: 'credit',     label: 'Credit'     },
   { value: 'investment', label: 'Investment' },
-  { value: 'cash',       label: 'Cash'       },
 ];
+
+const ACCOUNT_TYPE_INFO: Record<AccountType, { label: string; icon: IoniconName; color: string; desc: string }> = {
+  checking: {
+    label: 'Checking / Bank',
+    icon: 'card-outline',
+    color: '#6366F1',
+    desc: 'Best for primary bank accounts, UPI, salary deposits, and regular spending.',
+  },
+  cash: {
+    label: 'Cash Wallet',
+    icon: 'cash-outline',
+    color: '#10B981',
+    desc: 'Tracks physical cash in your pocket, wallet, and day-to-day petty expenses.',
+  },
+  savings: {
+    label: 'Savings Account',
+    icon: 'wallet-outline',
+    color: '#06B6D4',
+    desc: 'For emergency reserves, high-yield deposits, and savings set aside for goals.',
+  },
+  credit: {
+    label: 'Credit Card',
+    icon: 'card-outline',
+    color: '#EF4444',
+    desc: 'Tracks card limits & dues. Balance is treated as a liability against your net worth.',
+  },
+  investment: {
+    label: 'Investments',
+    icon: 'trending-up-outline',
+    color: '#8B5CF6',
+    desc: 'Tracks mutual funds, stocks, gold, crypto, or long-term wealth portfolios.',
+  },
+};
 
 import { useAuthStore } from '@store/authStore';
 
 interface Props {
   visible:        boolean;
   editingAccount: Account | null;
+  initialPreset?: Partial<AccountFormState>;
   onClose:        () => void;
   onSave:         (form: AccountFormState) => void;
 }
 
-export function AccountFormSheet({ visible, editingAccount, onClose, onSave }: Props) {
-  const { colors } = useTheme();
+export function AccountFormSheet({ visible, editingAccount, initialPreset, onClose, onSave }: Props) {
+  const { colors, isDark } = useTheme();
   const insets  = useSafeAreaInsets();
   const slideY  = useSharedValue(440);
   const [form, setForm] = useState<AccountFormState>(DEFAULT_ACCOUNT_FORM);
@@ -71,23 +105,33 @@ export function AccountFormSheet({ visible, editingAccount, onClose, onSave }: P
 
   useEffect(() => {
     if (visible) {
-      setForm(editingAccount ? {
-        name:      editingAccount.name,
-        type:      editingAccount.type,
-        color:     editingAccount.color,
-        icon:      editingAccount.icon as IoniconName,
-        balance:   String(editingAccount.balance),
-        currency:  editingAccount.currency as CurrencyCode,
-        isDefault: editingAccount.isDefault,
-      } : {
-        ...DEFAULT_ACCOUNT_FORM,
-        currency: userCurrency,
-      });
+      if (editingAccount) {
+        setForm({
+          name:      editingAccount.name,
+          type:      editingAccount.type,
+          color:     editingAccount.color,
+          icon:      editingAccount.icon as IoniconName,
+          balance:   String(editingAccount.balance),
+          currency:  editingAccount.currency as CurrencyCode,
+          isDefault: editingAccount.isDefault,
+        });
+      } else {
+        const baseType = initialPreset?.type ?? 'checking';
+        const typeInfo = ACCOUNT_TYPE_INFO[baseType];
+        setForm({
+          ...DEFAULT_ACCOUNT_FORM,
+          type: baseType,
+          color: typeInfo.color,
+          icon: typeInfo.icon,
+          currency: userCurrency,
+          ...initialPreset,
+        });
+      }
       slideY.value = withTiming(0, { duration: 380, easing: Easing.out(Easing.cubic) });
     } else {
       slideY.value = withTiming(440, { duration: 260, easing: Easing.in(Easing.cubic) });
     }
-  }, [visible]);
+  }, [visible, editingAccount, initialPreset]);
 
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: slideY.value }] }));
 
@@ -117,6 +161,16 @@ export function AccountFormSheet({ visible, editingAccount, onClose, onSave }: P
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+            {/* Why accounts matter guidance card */}
+            {!editingAccount && (
+              <View style={[s.guideBox, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : 'rgba(99, 102, 241, 0.08)', borderColor: isDark ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.18)' }]}>
+                <Ionicons name="bulb-outline" size={18} color={colors.brand.primary} />
+                <AppText style={[s.guideText, { color: colors.text.secondary }]}>
+                  Accounts represent your real-world money storage (bank accounts, cash in wallet, or credit cards) so you can track your total net worth and calculate balances accurately.
+                </AppText>
+              </View>
+            )}
+
             {/* Live preview card */}
             <View style={[s.previewWrap, { shadowColor: form.color }]}>
               <LinearGradient colors={[form.color, form.color + 'BB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.previewCard}>
@@ -141,10 +195,10 @@ export function AccountFormSheet({ visible, editingAccount, onClose, onSave }: P
 
             {/* Name */}
             <AppText variant="labelMD" color={colors.text.secondary} style={s.fieldLabel}>Account Name</AppText>
-            <TextInput style={[s.input, { backgroundColor: inputBg, color: inputClr }]} value={form.name} onChangeText={(v) => set('name', v)} placeholder="e.g. Main Checking" placeholderTextColor={colors.text.tertiary} />
+            <TextInput style={[s.input, { backgroundColor: inputBg, color: inputClr }]} value={form.name} onChangeText={(v) => set('name', v)} placeholder="e.g. Main Checking, Cash Wallet, HDFC" placeholderTextColor={colors.text.tertiary} />
 
             {/* Balance */}
-            <AppText variant="labelMD" color={colors.text.secondary} style={s.fieldLabel}>Balance</AppText>
+            <AppText variant="labelMD" color={colors.text.secondary} style={s.fieldLabel}>Current Balance</AppText>
             <TextInput style={[s.input, { backgroundColor: inputBg, color: inputClr }]} value={form.balance} onChangeText={(v) => set('balance', v.replace(/[^0-9.]/g, ''))} placeholder="0.00" placeholderTextColor={colors.text.tertiary} keyboardType="decimal-pad" />
 
             {/* Currency */}
@@ -163,18 +217,42 @@ export function AccountFormSheet({ visible, editingAccount, onClose, onSave }: P
             </View>
 
             {/* Type */}
-            <AppText variant="labelMD" color={colors.text.secondary} style={s.fieldLabel}>Account Type</AppText>
+            <AppText variant="labelMD" color={colors.text.secondary} style={s.fieldLabel}>Account Type & Use Case</AppText>
             <View style={s.chipRow}>
               {ACCOUNT_TYPES.map(({ value, label }) => {
                 const active = form.type === value;
                 return (
-                  <Pressable key={value} onPress={() => set('type', value)}
+                  <Pressable
+                    key={value}
+                    onPress={() => {
+                      const info = ACCOUNT_TYPE_INFO[value];
+                      setForm((prev) => ({
+                        ...prev,
+                        type: value,
+                        ...(!editingAccount ? { icon: info.icon, color: info.color } : {}),
+                      }));
+                    }}
                     style={[s.chip, { backgroundColor: active ? form.color : inputBg, borderColor: active ? form.color : 'transparent', borderWidth: 1.5 }]}
                   >
                     <AppText variant="labelSM" style={{ color: active ? colors.white : colors.text.secondary, fontWeight: active ? '700' : '500' }}>{label}</AppText>
                   </Pressable>
                 );
               })}
+            </View>
+
+            {/* Dynamic Account Type Description Card */}
+            <View style={[s.typeDescCard, { backgroundColor: inputBg, borderColor: form.color + '35' }]}>
+              <View style={[s.typeDescIcon, { backgroundColor: form.color + '18' }]}>
+                <Ionicons name={ACCOUNT_TYPE_INFO[form.type].icon} size={18} color={form.color} />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <AppText style={[s.typeDescTitle, { color: colors.text.primary }]}>
+                  {ACCOUNT_TYPE_INFO[form.type].label}
+                </AppText>
+                <AppText style={[s.typeDescBody, { color: colors.text.tertiary }]}>
+                  {ACCOUNT_TYPE_INFO[form.type].desc}
+                </AppText>
+              </View>
             </View>
 
             {/* Color */}
@@ -244,6 +322,47 @@ const s = StyleSheet.create({
   header:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
   closeBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   scroll:   { paddingHorizontal: 20, paddingBottom: 16, gap: 4 },
+
+  guideBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  guideText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+
+  typeDescCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    marginTop: 10,
+  },
+  typeDescIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeDescTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  typeDescBody: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
 
   previewWrap: {
     marginVertical: 12, borderRadius: Radius.xl,
