@@ -6,7 +6,12 @@ Welcome to the **WhereCash / MoneyApp** developer knowledge repository. This dir
 
 ## 📚 Document Directory
 
-### 🧮 Feature & Architecture Deep Dives
+### 🏛️ System Architecture & Mastery
+| Guide | Topics Covered | Target Knowledge |
+| :--- | :--- | :--- |
+| [**App Developer Mastery Blueprint**](./architecture/app-developer-mastery-guide.md) | 3-Tier Headless UI architecture, Zustand offline data flow, Reanimated 3 UI worklets, Android native traps, and financial precision laws. | **Complete Full-Stack Mobile Mastery** |
+
+### 🧮 Feature Deep Dives
 | Guide | Topics Covered | Key Source Files |
 | :--- | :--- | :--- |
 | [**Calculator Feature Guide**](./features/calculator-feature-guide.md) | Safe arithmetic parser without `eval()`, 2-pass operator precedence, state machine, React Native keypad ergonomics, and Android layout edge cases. | `src/utils/calculator.ts`<br>`src/components/accounts/AccountFormSheet.tsx` |
