@@ -7,9 +7,9 @@
  *       1. Account Name (with color/icon avatar)
  *       2. Accent Color (inline horizontal swatches)
  *       3. Currency Selector (shows default from setup, tap to expand)
- *       4. Big Tactile Balance Display with Live Calculator Keypad (+, -, ×, ÷, ⌫)
+ *       4. Starting Balance with optional on-demand Calculator (with '=', '+', '-', '×', '÷')
  *       5. Customization Drawer (Icon grid & Set as Primary toggle)
- *   - Sticky Bottom Action Bar with simple, punchy "Next" / "Save" buttons.
+ *   - Sticky Bottom Action Bar with simple "Next" / "Save" buttons.
  * @associatedFiles src/features/accounts/hooks/useAccountsScreen.ts, src/app/accounts.tsx, src/utils/calculator.ts
  */
 
@@ -25,8 +25,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { AppText } from '@components/AppText';
-import { Radius } from '@constants/Dimensions';
+import { Radius, FontFamily } from '@constants/index';
 import { useTheme } from '@hooks/useTheme';
+import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
 import {
   type AccountFormState,
   DEFAULT_ACCOUNT_FORM,
@@ -37,7 +38,7 @@ import {
   CALCULATOR_KEYS,
   applyCalculatorKey,
   evaluateExpression,
-} from '@/utils/calculator';
+} from '../../utils/calculator';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -123,15 +124,26 @@ interface Props {
 export function AccountFormSheet({ visible, editingAccount, initialPreset, onClose, onSave }: Props) {
   const { colors, isDark } = useTheme();
   const insets  = useSafeAreaInsets();
+  const kbH     = useKeyboardHeight();
   const slideY  = useSharedValue(440);
 
   const [step, setStep] = useState<1 | 2>(1);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [showCalculator, setShowCalculator] = useState(false);
   const [form, setForm] = useState<AccountFormState>(DEFAULT_ACCOUNT_FORM);
 
   const userCurrency = (useAuthStore((s) => s.user?.currency) as CurrencyCode) ?? 'INR';
   const nameInputRef = useRef<TextInput>(null);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (kbH > 0 && (step === 2 || editingAccount)) {
+      setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 80);
+    }
+  }, [kbH, step, editingAccount]);
 
   useEffect(() => {
     if (visible) {
@@ -162,6 +174,7 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
         setCustomizeOpen(false);
       }
       setShowCurrencyPicker(false);
+      setShowCalculator(false);
       slideY.value = withTiming(0, { duration: 360, easing: Easing.out(Easing.cubic) });
     } else {
       slideY.value = withTiming(440, { duration: 250, easing: Easing.in(Easing.cubic) });
@@ -249,7 +262,12 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
             </View>
           )}
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            ref={scrollRef}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[s.scroll, { paddingBottom: 28 }]}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* ══════════════════════════════════════════════════════
                 STEP 1: SELECT ACCOUNT TYPE & PURPOSE (USER APPROVED)
                ══════════════════════════════════════════════════════ */}
@@ -427,91 +445,209 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
                   )}
                 </View>
 
-                {/* 4. Tactile Balance Card with Live Calculated Evaluation */}
-                <View style={[s.balanceCard, { backgroundColor: inputBg, borderColor: form.color + '38' }]}>
+                {/* 4. Starting Balance Card with On-Demand Calculator Toggle */}
+                <View style={[s.balanceCard, { backgroundColor: inputBg, borderColor: showCalculator ? form.color : (form.color + '38') }]}>
                   <View style={s.balanceCardHeader}>
                     <AppText variant="caption" color={colors.text.tertiary} style={s.tinyHeader}>
                       STARTING BALANCE
                     </AppText>
-                    {hasOperation && (
-                      <AppText variant="caption" color={form.color} style={{ fontWeight: '700' }}>
-                        = {currentSymbol}{evaluatedBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <Pressable
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setShowCalculator(!showCalculator);
+                      }}
+                      style={[
+                        s.calcToggleBtn,
+                        {
+                          backgroundColor: showCalculator ? form.color + '22' : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)'),
+                          borderColor: showCalculator ? form.color : colors.glass.border,
+                        },
+                      ]}
+                    >
+                      <Ionicons name={showCalculator ? 'checkmark-circle-outline' : 'calculator-outline'} size={15} color={showCalculator ? form.color : colors.text.secondary} />
+                      <AppText style={{ color: showCalculator ? form.color : colors.text.secondary, fontWeight: '700', fontSize: 11.5 }}>
+                        {showCalculator ? 'Done' : 'Calculator'}
                       </AppText>
-                    )}
+                    </Pressable>
                   </View>
 
-                  <View style={s.balanceRow}>
-                    <AppText style={[s.balanceSymbol, { color: form.color }]}>
-                      {currentSymbol}
-                    </AppText>
-                    <AppText
-                      style={[
-                        s.balanceBigDisplay,
-                        { color: colors.text.primary },
-                        form.balance.length > 9 && { fontSize: 24 },
-                        form.balance.length > 14 && { fontSize: 20 },
-                      ]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                    >
-                      {form.balance || '0'}
-                    </AppText>
-                  </View>
+                  {/* Balance Display or Direct Input */}
+                  {!showCalculator ? (
+                    <View style={s.balanceRow}>
+                      <AppText style={[s.balanceSymbol, { color: form.color }]}>
+                        {currentSymbol}
+                      </AppText>
+                      <TextInput
+                        style={[s.balanceBigInput, { color: colors.text.primary }]}
+                        value={form.balance === '0' ? '' : form.balance}
+                        onChangeText={(v) => {
+                          const cleaned = v.replace(/[^0-9.]/g, '');
+                          const parts = cleaned.split('.');
+                          if (parts.length > 2) return;
+                          if (parts[1] && parts[1].length > 2) return;
+                          set('balance', cleaned === '' ? '0' : cleaned);
+                        }}
+                        placeholder="0.00"
+                        placeholderTextColor={colors.text.tertiary}
+                        keyboardType="decimal-pad"
+                        returnKeyType="done"
+                        selectTextOnFocus
+                        selectionColor={form.color}
+                        onFocus={() => {
+                          setTimeout(() => {
+                            scrollRef.current?.scrollToEnd({ animated: true });
+                          }, 100);
+                        }}
+                      />
+                      <Pressable
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setShowCalculator(true);
+                        }}
+                        style={[s.quickCalcIconBtn, { backgroundColor: form.color + '18' }]}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="calculator" size={20} color={form.color} />
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <View>
+                      <View style={s.balanceRow}>
+                        <AppText style={[s.balanceSymbol, { color: form.color }]}>
+                          {currentSymbol}
+                        </AppText>
+                        <AppText
+                          style={[
+                            s.balanceBigDisplay,
+                            { color: colors.text.primary },
+                            form.balance.length > 9 && { fontSize: 24 },
+                            form.balance.length > 14 && { fontSize: 20 },
+                          ]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                        >
+                          {form.balance || '0'}
+                        </AppText>
+                      </View>
+                      {hasOperation && (
+                        <Pressable
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            const next = applyCalculatorKey(form.balance || '0', '=');
+                            set('balance', next);
+                          }}
+                          style={[s.liveResultRow, { backgroundColor: form.color + '12', borderColor: form.color + '35' }]}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <AppText variant="caption" color={colors.text.tertiary}>TOTAL</AppText>
+                            <AppText style={[s.liveResultText, { color: form.color }]}>
+                              = {currentSymbol}{evaluatedBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </AppText>
+                          </View>
+                          <AppText variant="caption" color={form.color} style={{ fontWeight: '700' }}>
+                            Tap = to apply
+                          </AppText>
+                        </Pressable>
+                      )}
+                    </View>
+                  )}
                 </View>
 
-                {/* 5. Ivy Wallet Calculator Keypad (No System Keyboard Required!) */}
-                <View style={s.keypadContainer}>
-                  {CALCULATOR_KEYS.map((row, rIdx) => (
-                    <View key={rIdx} style={s.keypadRow}>
-                      {row.map((key) => {
-                        const isOperator = ['+', '-', '×', '÷'].includes(key);
-                        const isBackspace = key === '⌫';
-                        return (
-                          <Pressable
-                            key={key}
-                            onPress={() => {
-                              Keyboard.dismiss();
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              const next = applyCalculatorKey(form.balance || '0', key);
-                              set('balance', next);
-                            }}
-                            style={({ pressed }) => [
-                              s.keypadBtn,
-                              {
-                                backgroundColor: isOperator
-                                  ? form.color + '18'
-                                  : isBackspace
-                                  ? (isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)')
-                                  : (isDark ? 'rgba(255, 255, 255, 0.05)' : '#FFFFFF'),
-                                borderColor: isOperator
-                                  ? form.color + '35'
-                                  : isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
-                                opacity: pressed ? 0.6 : 1,
-                              },
-                            ]}
-                          >
-                            {isBackspace ? (
-                              <Ionicons name="backspace-outline" size={20} color={colors.status.expense} />
-                            ) : (
+                {/* 5. Ivy Wallet Calculator Keypad (Only Shown When User Clicks Calculator!) */}
+                {showCalculator && (
+                  <Animated.View entering={FadeIn.duration(200)} style={s.keypadContainer}>
+                    {CALCULATOR_KEYS.map((row, rIdx) => (
+                      <View key={rIdx} style={s.keypadRow}>
+                        {row.map((key) => {
+                          const isOperator = ['+', '-', '×', '÷'].includes(key);
+                          const isClear = key === 'C';
+                          return (
+                            <Pressable
+                              key={key}
+                              onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                const next = applyCalculatorKey(form.balance || '0', key);
+                                set('balance', next);
+                              }}
+                              style={({ pressed }) => [
+                                s.keypadBtn,
+                                {
+                                  backgroundColor: isOperator
+                                    ? form.color + '18'
+                                    : isClear
+                                    ? (isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)')
+                                    : (isDark ? 'rgba(255, 255, 255, 0.05)' : '#FFFFFF'),
+                                  borderColor: isOperator
+                                    ? form.color + '35'
+                                    : isClear
+                                    ? 'rgba(239, 68, 68, 0.25)'
+                                    : isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+                                  opacity: pressed ? 0.6 : 1,
+                                },
+                              ]}
+                            >
                               <AppText
                                 style={[
                                   s.keypadBtnText,
                                   {
-                                    color: isOperator ? form.color : colors.text.primary,
-                                    fontWeight: isOperator ? '800' : '600',
+                                    color: isOperator ? form.color : isClear ? colors.status.expense : colors.text.primary,
+                                    fontWeight: isOperator || isClear ? '800' : '600',
                                     fontSize: isOperator ? 20 : 18,
                                   },
                                 ]}
                               >
                                 {key}
                               </AppText>
-                            )}
-                          </Pressable>
-                        );
-                      })}
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ))}
+
+                    {/* Dedicated Row 5: [ ⌫ Backspace ] and [ = Calculate Total ] */}
+                    <View style={s.keypadRow}>
+                      <Pressable
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          const next = applyCalculatorKey(form.balance || '0', '⌫');
+                          set('balance', next);
+                        }}
+                        style={({ pressed }) => [
+                          s.keypadBackspaceBtn,
+                          {
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#FFFFFF',
+                            borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+                            opacity: pressed ? 0.6 : 1,
+                          },
+                        ]}
+                      >
+                        <Ionicons name="backspace-outline" size={22} color={colors.text.secondary} />
+                      </Pressable>
+
+                      <Pressable
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          const next = applyCalculatorKey(form.balance || '0', '=');
+                          set('balance', next);
+                        }}
+                        style={({ pressed }) => [
+                          s.keypadEqualsBtn,
+                          {
+                            backgroundColor: form.color,
+                            opacity: pressed ? 0.85 : 1,
+                          },
+                        ]}
+                      >
+                        <Ionicons name="calculator" size={18} color="#FFFFFF" />
+                        <AppText style={s.keypadEqualsBtnText}>
+                          {hasOperation ? `=  ${evaluatedBalance}` : '=  Total'}
+                        </AppText>
+                      </Pressable>
                     </View>
-                  ))}
-                </View>
+                  </Animated.View>
+                )}
 
                 {/* 6. Customization Drawer (Icons & Primary Default) */}
                 <Pressable
@@ -589,7 +725,9 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
               {
                 backgroundColor: sheetBg,
                 borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
-                paddingBottom: Math.max(insets.bottom, 14),
+                paddingBottom: Platform.OS === 'android'
+                  ? Math.max(insets.bottom, 14) + kbH
+                  : Math.max(insets.bottom, 14),
               },
             ]}
           >
@@ -598,6 +736,7 @@ export function AccountFormSheet({ visible, editingAccount, initialPreset, onClo
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   setStep(2);
+                  setShowCalculator(false);
                 }}
                 style={({ pressed }) => [
                   s.stickyBtn,
@@ -779,28 +918,77 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  calcToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
   balanceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    minHeight: 56,
   },
   balanceSymbol: {
     fontSize: 28,
     fontWeight: '800',
-    includeFontPadding: false,
+    fontFamily: FontFamily.bold,
+    minHeight: 48,
+    textAlignVertical: 'center',
+    includeFontPadding: true,
+  },
+  balanceBigInput: {
+    flex: 1,
+    fontSize: 32,
+    fontWeight: '800',
+    fontFamily: FontFamily.bold,
+    letterSpacing: -0.5,
+    minHeight: 56,
+    paddingVertical: Platform.OS === 'android' ? 6 : 4,
+    textAlignVertical: 'center',
+    includeFontPadding: true,
   },
   balanceBigDisplay: {
     fontSize: 30,
     fontWeight: '800',
+    fontFamily: FontFamily.bold,
     letterSpacing: -0.5,
-    includeFontPadding: false,
+    minHeight: 50,
+    textAlignVertical: 'center',
+    includeFontPadding: true,
     flex: 1,
+  },
+  quickCalcIconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
+  liveResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    marginTop: 6,
+  },
+  liveResultText: {
+    fontSize: 14,
+    fontWeight: '800',
   },
 
   /* 5. Keypad */
   keypadContainer: {
     gap: 8,
-    marginTop: 2,
+    marginTop: 4,
   },
   keypadRow: {
     flexDirection: 'row',
@@ -815,6 +1003,29 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   keypadBtnText: {
+    includeFontPadding: false,
+  },
+  keypadBackspaceBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  keypadEqualsBtn: {
+    flex: 3,
+    height: 48,
+    borderRadius: Radius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  keypadEqualsBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 16,
     includeFontPadding: false,
   },
 

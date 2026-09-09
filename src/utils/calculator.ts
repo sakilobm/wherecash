@@ -10,10 +10,10 @@ export const CALCULATOR_KEYS: string[][] = [
   ['7', '8', '9', '÷'],
   ['4', '5', '6', '×'],
   ['1', '2', '3', '-'],
-  ['.', '0', '⌫', '+'],
+  ['C', '0', '.', '+'],
 ];
 
-export type CalculatorKey = typeof CALCULATOR_KEYS[number][number];
+export type CalculatorKey = string;
 
 /**
  * Safely evaluates an arithmetic expression containing numbers and +, -, *, /
@@ -75,20 +75,32 @@ export function evaluateExpression(expr: string): number {
  * State machine for handling calculator button presses.
  */
 export function applyCalculatorKey(current: string, key: string): string {
-  const isOperator = ['+', '-', '×', '÷'].includes(key);
+  const normalizedKey = key === '*' ? '×' : key === '/' ? '÷' : key;
+
+  // Clear all
+  if (normalizedKey === 'C') {
+    return '0';
+  }
+
+  // Calculate equals
+  if (normalizedKey === '=') {
+    const result = evaluateExpression(current);
+    return String(result);
+  }
+
+  const isOperator = ['+', '-', '×', '÷'].includes(normalizedKey);
   const lastChar = current.slice(-1);
   const lastIsOperator = ['+', '-', '×', '÷'].includes(lastChar);
 
   // Backspace
-  if (key === '⌫') {
+  if (normalizedKey === '⌫') {
     if (current.length <= 1) return '0';
-    // Remove space + operator + space if operator
-    return current.slice(0, -1).trim();
+    const trimmed = current.slice(0, -1).trim();
+    return trimmed === '' ? '0' : trimmed;
   }
 
   // Decimal point
-  if (key === '.') {
-    // Extract last number token
+  if (normalizedKey === '.') {
     const parts = current.split(/[+\-×÷]/);
     const lastPart = parts[parts.length - 1];
     if (lastPart.includes('.')) return current;
@@ -100,22 +112,37 @@ export function applyCalculatorKey(current: string, key: string): string {
   if (isOperator) {
     if (current === '' || current === '0') return '0';
     if (lastIsOperator) {
-      // Replace last operator
-      return current.slice(0, -1) + key;
+      return current.slice(0, -1) + normalizedKey;
     }
-    return current + key;
+    return current + normalizedKey;
+  }
+
+  // Double zero
+  if (normalizedKey === '00') {
+    if (current === '' || current === '0') return '0';
+    const parts = current.split(/[+\-×÷]/);
+    const lastPart = parts[parts.length - 1];
+    if (lastPart === '0') return current;
+    if (lastPart.includes('.')) {
+      const decimals = lastPart.split('.')[1];
+      if (decimals && decimals.length >= 1) return current;
+    }
+    return current + '00';
   }
 
   // Digits (0-9)
-  if (current === '0') return key;
+  if (current === '0') return normalizedKey;
 
-  // Enforce max 2 decimals on active number token
+  // Check last token
   const parts = current.split(/[+\-×÷]/);
   const lastPart = parts[parts.length - 1];
+  if (lastPart === '0' && normalizedKey !== '0') {
+    return current.slice(0, -1) + normalizedKey;
+  }
   if (lastPart.includes('.')) {
     const decimals = lastPart.split('.')[1];
     if (decimals && decimals.length >= 2) return current;
   }
 
-  return current + key;
+  return current + normalizedKey;
 }
