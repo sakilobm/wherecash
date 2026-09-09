@@ -7,7 +7,7 @@
  */
 
 import React, { memo } from 'react';
-import { View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -103,9 +103,9 @@ export const HomeBalanceCard = memo(function HomeBalanceCard({
           {isLoading ? (
             <ActivityIndicator size="small" color="#FFFFFF" style={{ marginVertical: 8 }} />
           ) : hideBalance ? (
-            <AppText style={s.balanceHidden}>••••••••</AppText>
+            <AppText variant="numeric" style={s.balanceHidden}>••••••••</AppText>
           ) : (
-            <AppText style={s.balanceAmount} numberOfLines={1} adjustsFontSizeToFit>
+            <AppText variant="numeric" style={s.balanceAmount} numberOfLines={1} adjustsFontSizeToFit>
               {symbol}{formattedBalance}
             </AppText>
           )}
@@ -213,12 +213,17 @@ const s = StyleSheet.create({
   },
   balanceSection: {
     marginVertical: Spacing['2'],
+    overflow: 'visible',
+    justifyContent: 'center',
   },
   balanceAmount: {
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: '800',
     color: '#FFFFFF',
-    letterSpacing: -0.5,
+    lineHeight: Platform.OS === 'android' ? 44 : 42,
+    paddingVertical: 4,
+    letterSpacing: Platform.OS === 'android' ? 0 : -0.5,
+    includeFontPadding: false,
   },
   balanceHidden: {
     fontSize: 26,
