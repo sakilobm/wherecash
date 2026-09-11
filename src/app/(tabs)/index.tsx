@@ -33,6 +33,7 @@ import { QuickAddSheet } from '@components/home/QuickAddSheet';
 import { TransferSheet } from '@components/home/TransferSheet';
 import { EditTransactionSheet } from '@components/transactions/EditTransactionSheet';
 
+import { HomeAccountsBar } from '@features/dashboard/components/HomeAccountsBar';
 import { HomeBalanceCard } from '@features/dashboard/components/HomeBalanceCard';
 import { HomeQuickActions } from '@features/dashboard/components/HomeQuickActions';
 import { ThisMonthOverview } from '@features/dashboard/components/ThisMonthOverview';
@@ -126,19 +127,14 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        {/* ── My Money Header Link ── */}
-        <View style={s.myMoneyRow}>
-          <AppText style={[s.myMoneyTitle, { color: colors.text.primary }]}>My Money</AppText>
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/accounts');
-            }}
-            hitSlop={8}
-          >
-            <AppText style={[s.manageLink, { color: colors.brand.primary }]}>Manage</AppText>
-          </Pressable>
-        </View>
+        {/* ── Interactive Quick Accounts Carousel ── */}
+        <HomeAccountsBar
+          accounts={data?.accounts ?? []}
+          symbol={symbol}
+          totalBalance={data?.totalBalance ?? 0}
+          onManagePress={() => router.push('/accounts')}
+          onNewAccountPress={() => router.push('/accounts')}
+        />
 
         {/* ── Available Balance Card (Emerald Luxury) ── */}
         <HomeBalanceCard
@@ -215,7 +211,4 @@ const s = StyleSheet.create({
   bellBtn: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   bellBadge: { position: 'absolute', top: -1, right: -1, minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, borderWidth: 1.5 },
   bellBadgeText: { fontSize: 8, fontWeight: '900', lineHeight: 10, textAlign: 'center', color: '#FFFFFF', includeFontPadding: false },
-  myMoneyRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: Spacing['2'], marginBottom: 2 },
-  myMoneyTitle: { fontSize: 16, fontWeight: '800', includeFontPadding: false },
-  manageLink: { fontSize: 13, fontWeight: '700', includeFontPadding: false },
 });
