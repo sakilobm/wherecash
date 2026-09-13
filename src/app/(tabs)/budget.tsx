@@ -42,11 +42,11 @@ export default function BudgetScreen() {
         <BudgetOverviewHero
           summary={screen.summary}
           hasBudgets={screen.budgets.length > 0}
-          onEditLimit={() => screen.handleSetLimit('food')}
+          onEditLimit={() => screen.handleSetLimit(screen.budgets[0]?.category || 'food')}
         />
 
         {screen.isScreenEmpty ? (
-          <BudgetEmptyState onSetBudget={() => screen.handleSetLimit('food')} />
+          <BudgetEmptyState onSetBudget={() => screen.handleSetLimit(undefined)} />
         ) : (
           <View style={s.contentGap}>
             {/* 2. Focus Tabs (Categories vs Planned Bills) */}

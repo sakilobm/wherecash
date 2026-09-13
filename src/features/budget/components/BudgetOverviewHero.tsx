@@ -1,3 +1,4 @@
+
 /**
  * @file BudgetOverviewHero.tsx
  * @architecture Presentation Layer — Budget Atomic Component

@@ -26,6 +26,7 @@
   - [1. The Mistakes in the Old Code (Ena Mistake Pannom?)](#1-the-mistakes-in-the-old-code-ena-mistake-pannom)
   - [2. How We Fixed It (Epdi Fix Pannom?)](#2-how-we-fixed-it-epdi-fix-pannom)
   - [3. Senior Developer Mental Models & Rules of Thumb](#3-senior-developer-mental-models--rules-of-thumb)
+  - [4. The Budget Creation vs. Top-Up Dilemma & UX Architecture](#4-the-budget-creation-vs-top-up-dilemma--ux-architecture)
 
 ---
 
@@ -267,4 +268,35 @@ Live count badges in each tab inform the user of active items before they even s
 > **Rule**: Typing numeric amounts on mobile keyboards is error-prone and tedious.
 >
 > Always offer **Quick Preset Chips** (`+500`, `+1000`) and an **On-Demand Calculator** so users can compute totals without jumping out to an external calculator app.
+
+---
+
+## 4. The Budget Creation vs. Top-Up Dilemma & UX Architecture
+
+### The Problem: Mental Model Ambiguity
+In financial applications, users encounter two fundamentally different intentions:
+1. **Initial Target Definition (Create)**: *"I want to set a ₹10,000 monthly spending limit for Food."*
+2. **Allowance Adjustment (Top-Up / Update)**: *"I already have a ₹10,000 limit, but this month I have extra travel/festival expenses, so I need to add +₹2,000 more."*
+
+When an app forces both intentions into a single generic input sheet without clear context:
+- Users fear that tapping `+₹1,000` is recording a ₹1,000 **expense** rather than adjusting their limit.
+- Users cannot tell whether entering `12000` overrides their limit permanently or applies only to the active period.
+
+### The Architectural & UX Solution: Apple-Grade Minimalist Ergonomics
+1. **Primary Intent First (2-Second Direct Budget Entry)**:
+   - Tapping any category card immediately pops an ultra-clean amount sheet with a bold numeric hero display (`₹ 10,000`).
+   - Quick 1-tap increment presets: `[+₹500]`, `[+₹1,000]`, `[+₹5,000]`, `[Clear]`.
+   - Single clean primary action: **`Save Budget`**.
+
+2. **Progressive Disclosure: Dedicated Settings Drawer**:
+   - Advanced actions (Delete Budget, Reset to 0) are kept out of the everyday flow.
+   - Accessible exclusively via a subtle `[⚙️ Settings]` icon in the sheet header.
+   - Clicking `⚙️` reveals the advanced options on-demand, preventing cognitive overload during routine adjustments.
+
+3. **Unified Clean Cards on Main Screen**:
+   - Cluttered inline action buttons (`Adjust`, `Trash`) are completely stripped from category cards and capsules.
+   - Cards have full breathing room, displaying only the category icon, name, clean progress bar, and spent ratio.
+   - The entire card is a responsive touchable that smoothly opens the amount sheet.
+
+
 

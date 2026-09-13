@@ -81,34 +81,18 @@ const CategoryCard = memo(function CategoryCard({ item, onDeleteLimit, onSetLimi
         </View>
 
         {item.hasLimit ? (
-          <Pressable
-            onPress={handleDeletePress}
-            style={({ pressed }) => [
-              styles.trashBtn,
-              {
-                backgroundColor: colors.glass.backgroundMid,
-                opacity: pressed ? 0.7 : 1,
-              },
-            ]}
-          >
-            <Ionicons name="trash-outline" size={11} color={colors.status.expense} />
-          </Pressable>
-        ) : (
-          <Pressable
-            onPress={handleSetLimitPress}
-            style={({ pressed }) => [
-              styles.inlineSetBtn,
-              {
-                backgroundColor: colors.brand.primary,
-                opacity: pressed ? 0.8 : 1,
-              },
-            ]}
-          >
-            <Ionicons name="add" size={9} color={colors.brand.onPrimary} />
-            <AppText variant="caption" style={[styles.inlineSetBtnText, { color: colors.brand.onPrimary }]}>
-              Limit
+          <View style={[styles.limitBadge, { backgroundColor: statusColor + '18' }]}>
+            <AppText variant="caption" style={{ color: statusColor, fontSize: 10, fontWeight: '800' }}>
+              {displayPercent}%
             </AppText>
-          </Pressable>
+          </View>
+        ) : (
+          <View style={[styles.inlineSetBtn, { backgroundColor: colors.brand.primary + '18' }]}>
+            <Ionicons name="add" size={10} color={colors.brand.primary} />
+            <AppText variant="caption" style={[styles.inlineSetBtnText, { color: colors.brand.primary }]}>
+              Set
+            </AppText>
+          </View>
         )}
       </View>
 
@@ -290,38 +274,17 @@ const CategoryCapsule = memo(function CategoryCapsule({ item, onDeleteLimit, onS
               >
                 {isOver
                   ? `+${symbol}${(item.spent - item.limit).toFixed(0)}`
-                  : `${symbol}${remaining.toFixed(0)} remaining`}
+                  : `${symbol}${remaining.toFixed(0)} left`}
               </AppText>
-
-              <Pressable
-                onPress={handleDeletePress}
-                style={({ pressed }) => [
-                  styles.trashBtn,
-                  {
-                    backgroundColor: colors.glass.backgroundMid,
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <Ionicons name="trash-outline" size={12} color={colors.status.expense} />
-              </Pressable>
+              <Ionicons name="chevron-forward" size={14} color={colors.text.tertiary} />
             </View>
           ) : (
-            <Pressable
-              onPress={handleSetLimitPress}
-              style={({ pressed }) => [
-                styles.inlineSetBtn,
-                {
-                  backgroundColor: colors.brand.primary,
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Ionicons name="add" size={11} color={colors.brand.onPrimary} />
-              <AppText variant="caption" style={[styles.inlineSetBtnText, { color: colors.brand.onPrimary }]}>
+            <View style={[styles.inlineSetBtn, { backgroundColor: colors.brand.primary + '18' }]}>
+              <Ionicons name="add" size={11} color={colors.brand.primary} />
+              <AppText variant="caption" style={[styles.inlineSetBtnText, { color: colors.brand.primary }]}>
                 Set Limit
               </AppText>
-            </Pressable>
+            </View>
           )}
         </View>
       </View>
@@ -514,14 +477,10 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  trashBtn: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.12)',
+  limitBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   inlineSetBtn: {
     flexDirection: 'row',
