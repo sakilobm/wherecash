@@ -312,3 +312,38 @@ When an app forces both intentions into a single generic input sheet without cle
    - **Step 2 (Fulfillment & Execution)**: Date picker, category capsule, payment account selector, and recurrence cycle (`weekly`, `monthly`, `yearly`).
    - **Header Step Pill & Back Navigation**: Shows `Step 1/2` vs `Step 2/2` with back button support, eliminating multi-field visual overload completely.
 
+---
+
+## 6. Planned Payments Card Architecture & Native Thread Performance
+
+### The Flaws in Old Card Implementation:
+- **Confusing 340ms Hold Lock**: Required holding for 340ms before a "HOLD" badge switched to "SWIPE", which users found counter-intuitive and clunky.
+- **Cluttered Header Instruction Tags**: `[⬅️ Delete]` and `[🖐️ Hold settle]` badges polluted the header row, looking like MVP debug buttons.
+- **JS-Thread Bridge Traffic**: The PanGesture previously called `.runOnJS(true)` during gesture movement (`onUpdate`), causing bridge traffic on every single frame tick.
+- **Lack of Immediate Action**: No 1-tap direct settle or pay button on the card.
+
+### The Modern Minimalist Solution (`PlannedPaymentsTimeline.tsx`):
+1. **Native UI-Thread Reanimated Worklets (60/120fps)**:
+   - Pan gestures now run completely on the UI thread (`'worklet'`).
+   - `translateX` and animated underlay opacities calculate synchronously on the native thread without bridge traffic.
+   - `runOnJS` is only invoked when a conclusive gesture threshold triggers action (`onEnd`).
+2. **Authentic Category Squircle & Micro Status Pulse**:
+   - 40x40 squircle with authentic category tint.
+   - Top-right corner status dot:
+     - `Red` for Overdue (`#EF4444`).
+     - `Amber` for Due Today or Urgent (`#F59E0B`).
+     - `Emerald` for Settled (`#10B981`).
+     - `Primary Blue` for Upcoming (`>3 days`).
+3. **Streamlined Information Architecture**:
+   - Clean Bill Title + recurring chip (`↻ Monthly`).
+   - Clean Urgency Pill (`⚠️ 2d overdue`, `⚡ Due today`, `⏳ Due in 2d`, `📅 Sep 22 · in 8d`, `✓ Settled`).
+   - Bank Account Pill with matching account dot and name.
+4. **Interactive Dual-Action CTA**:
+   - Tap `[ Pay ↗ ]` to open `PayPartialSheet` (with partial amount, bank selection, and notes).
+   - Tap `[ ✓ ]` quick checkmark button to instantly settle the bill with haptic feedback.
+   - Swipe Right (past 80px) to instantly settle.
+   - Swipe Left (past 84px) to reveal Delete or flick left to auto-delete.
+5. **Partial Payment Progress Bar**:
+   - If `amountPaid > 0`, renders a clean 4px track with category color fill.
+   - Shows exact breakdown: `Paid ₹500 (50%)` and `₹500 left of ₹1,000`.
+

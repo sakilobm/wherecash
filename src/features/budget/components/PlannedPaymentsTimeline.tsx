@@ -1,4 +1,16 @@
-import React, { useRef, useState, memo, useCallback } from 'react';
+/**
+ * @file PlannedPaymentsTimeline.tsx
+ * @architecture Presentation Layer — UI Component
+ * @description Ultra-clean, modern minimalist timeline and card list for planned bills.
+ *   - Native 60/120fps UI-thread Reanimated gestures (swipe right to settle, swipe left to delete)
+ *   - Authentic category squircle icons with micro-status pulse indicator
+ *   - Clean urgency badges (Overdue, Due Today, Urgent, Upcoming, Settled)
+ *   - Visual progress bar for partial payments
+ *   - Direct 1-tap quick settle checkmark & 'Pay' modal trigger
+ * @associatedFiles src/features/budget/hooks/useBudgetScreen.ts, src/app/(tabs)/budget.tsx
+ */
+
+import React, { memo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,6 +22,7 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
+  runOnJS,
 } from 'react-native-reanimated';
 import {
   GestureDetector,
@@ -17,6 +30,7 @@ import {
 } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+import { format, parseISO } from 'date-fns';
 import { AppText } from '@components/AppText';
 import { useTheme } from '@hooks/useTheme';
 import { useFormatCurrency } from '@hooks/useFormatCurrency';
@@ -25,32 +39,36 @@ import { Spacing, Radius } from '@constants/Dimensions';
 import { daysUntilDue, isUrgent } from '@store/plannedPaymentsStore';
 import type { PlannedPayment } from '@store/plannedPaymentsStore';
 
-// ─── Category icons ───────────────────────────────────────────────────────────
+// ─── Category Metadata ─────────────────────────────────────────────────────────
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
-const CATEGORY_ICON: Record<string, IoniconName> = {
-  housing: 'home-outline',
-  food: 'restaurant-outline',
-  transport: 'car-outline',
-  health: 'fitness-outline',
-  entertainment: 'film-outline',
-  shopping: 'bag-handle-outline',
-  education: 'school-outline',
-  savings: 'wallet-outline',
-  other: 'ellipsis-horizontal-outline',
+interface CategoryMeta {
+  icon: IoniconName;
+  color: string;
+}
+
+const CATEGORY_META: Record<string, CategoryMeta> = {
+  housing:       { icon: 'home-outline',                 color: '#3B82F6' },
+  food:          { icon: 'restaurant-outline',           color: '#10B981' },
+  transport:     { icon: 'car-outline',                  color: '#38BDF8' },
+  health:        { icon: 'fitness-outline',              color: '#EF4444' },
+  entertainment: { icon: 'film-outline',                 color: '#8B5CF6' },
+  shopping:      { icon: 'bag-handle-outline',           color: '#EC4899' },
+  education:     { icon: 'school-outline',               color: '#F59E0B' },
+  savings:       { icon: 'wallet-outline',               color: '#10B981' },
+  bills:         { icon: 'flash-outline',                color: '#EAB308' },
+  other:         { icon: 'receipt-outline',              color: '#6B7280' },
 };
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Gesture Thresholds ────────────────────────────────────────────────────────
 
-const ROW_HEIGHT = 82;
-const SWIPE_SETTLE = 80;   // px rightward to trigger settle (after unlock)
-const LOCK_MS = 3000; // auto-lock after 3 s
-const TX_DELETE_W = 84;   // width of the revealed delete zone
-const TX_SNAP_AT = TX_DELETE_W / 2;  // snap open if past this
-const TX_AUTO_DELETE = 190;  // full swipe left → auto-delete immediately
+const SWIPE_SETTLE_THRESHOLD = 80;
+const TX_DELETE_W = 84;
+const TX_SNAP_AT = TX_DELETE_W * 0.55;
+const TX_AUTO_DELETE = 175;
 
-// ─── Single payment row (Memoized for High Performance) ───────────────────────
+// ─── Payment Row Component (Memoized) ──────────────────────────────────────────
 
 interface PaymentRowProps {
   payment: PlannedPayment;
@@ -65,296 +83,384 @@ const PaymentRow = memo(function PaymentRow({ payment, onSettle, onDelete, onPre
   const account = useAccountStore((s) => s.accounts.find((a) => a.id === payment.accountId));
 
   const paid = payment.amountPaid ?? 0;
-  const remaining = payment.amount - paid;
-  const progressPct = payment.amount > 0 ? paid / payment.amount : 0;
-
-  const translateX = useSharedValue(0);
-  const rowOpacity = useSharedValue(1);
-  const rowHeight = useSharedValue(ROW_HEIGHT + Spacing['2']);
-  const glowOp = useSharedValue(0);
-
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const lockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const remaining = Math.max(0, payment.amount - paid);
+  const progressPct = payment.amount > 0 ? Math.min(1, paid / payment.amount) : 0;
+  const isSettled = payment.status === 'SETTLED';
 
   const days = daysUntilDue(payment.dueDate);
   const urgent = isUrgent(payment.dueDate);
-  const isSettled = payment.status === 'SETTLED';
+  const isOverdue = payment.status === 'OVERDUE' || days < 0;
 
-  const dotColor =
-    payment.status === 'SETTLED' ? colors.status.income :
-      payment.status === 'OVERDUE' ? colors.status.expense :
-        urgent ? colors.status.warning : colors.status.info;
+  // Reanimated Shared Values
+  const translateX = useSharedValue(0);
+  const rowOpacity = useSharedValue(1);
+  const pressScale = useSharedValue(1);
 
-  // ── Lock controller
-  const lock = useCallback(() => {
-    setIsUnlocked(false);
-    glowOp.value = withTiming(0, { duration: 150 });
-    if (lockTimer.current) clearTimeout(lockTimer.current);
-  }, [glowOp, lockTimer]);
+  // Category & Status Colors
+  const catMeta = CATEGORY_META[payment.category] || { icon: 'receipt-outline', color: colors.brand.primary };
+  const catColor = catMeta.color;
 
-  // ── Collapse + call action (used for settle)
-  const dismissRow = useCallback((action: () => void) => {
+  const dotColor = isSettled
+    ? colors.status.income
+    : isOverdue
+      ? colors.status.expense
+      : urgent || days === 0
+        ? colors.status.warning
+        : colors.brand.primary;
+
+  // Format Due Date
+  let formattedDate = '';
+  try {
+    formattedDate = format(parseISO(payment.dueDate), 'MMM d');
+  } catch {
+    formattedDate = payment.dueDate;
+  }
+
+  // Settle action with animation
+  const handleSettleAction = useCallback(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    translateX.value = withTiming(240, { duration: 200 });
     rowOpacity.value = withTiming(0, { duration: 220 });
-    rowHeight.value = withTiming(0, { duration: 300 });
-    setTimeout(action, 300);
-  }, [rowOpacity, rowHeight]);
+    setTimeout(() => {
+      onSettle(payment.id);
+    }, 220);
+  }, [onSettle, payment.id, translateX, rowOpacity]);
 
-  // ── Slide left + collapse (used for delete)
-  const dismissLeft = useCallback(() => {
-    translateX.value = withTiming(-500, { duration: 260 });
+  // Delete action with animation
+  const handleDeleteAction = useCallback(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    translateX.value = withTiming(-400, { duration: 220 });
     rowOpacity.value = withTiming(0, { duration: 200 });
-    rowHeight.value = withTiming(0, { duration: 280 });
-    if (isUnlocked) lock();
-    setTimeout(() => onDelete(payment.id), 250);
-  }, [isUnlocked, translateX, rowOpacity, rowHeight, lock, onDelete, payment.id]);
+    setTimeout(() => {
+      onDelete(payment.id);
+    }, 220);
+  }, [onDelete, payment.id, translateX, rowOpacity]);
 
-  const handleSettle = useCallback(() => {
-    dismissRow(() => onSettle(payment.id));
-  }, [dismissRow, onSettle, payment.id]);
-
-  // ── Long-press unlock (for settle gesture)
-  const unlock = useCallback(() => {
-    if (payment.status === 'SETTLED') return;
-    setIsUnlocked(true);
-    glowOp.value = withTiming(1, { duration: 180 });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (lockTimer.current) clearTimeout(lockTimer.current);
-    lockTimer.current = setTimeout(() => {
-      setIsUnlocked(false);
-      glowOp.value = withTiming(0, { duration: 200 });
-      translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
-    }, LOCK_MS);
-  }, [payment.status, glowOp, lockTimer]);
-
-  // ── Unified pan: left = delete (always), right = settle (requires unlock)
+  // UI-Thread Native Pan Gesture
   const panGesture = Gesture.Pan()
-    .enabled(payment.status !== 'SETTLED')
-    .runOnJS(true)
-    .activeOffsetX([-10, 10])
+    .activeOffsetX([-12, 12])
     .failOffsetY([-8, 8])
     .onUpdate((e) => {
-      if (e.translationX < 0) {
-        // Left swipe → delete direction (no unlock needed)
-        translateX.value = Math.max(e.translationX, -(TX_DELETE_W + 12));
-      } else {
-        // Right swipe → settle direction (unlock required)
-        if (isUnlocked) {
-          translateX.value = Math.min(e.translationX, 140);
+      'worklet';
+      if (isSettled) {
+        // Settled bills only allow swipe-left to delete
+        if (e.translationX < 0) {
+          translateX.value = Math.max(e.translationX, -(TX_DELETE_W + 16));
         }
-        // If not unlocked, resist rightward movement (no visual shift)
+        return;
+      }
+
+      if (e.translationX > 0) {
+        // Swipe Right -> Settle
+        translateX.value = Math.min(e.translationX, 130);
+      } else {
+        // Swipe Left -> Delete
+        translateX.value = Math.max(e.translationX, -(TX_DELETE_W + 16));
       }
     })
     .onEnd((e) => {
-      if (e.translationX >= SWIPE_SETTLE && isUnlocked) {
-        // ── Settle: swiped right far enough while unlocked
-        translateX.value = withTiming(170, { duration: 200 });
-        setTimeout(() => { lock(); handleSettle(); }, 100);
-
+      'worklet';
+      if (e.translationX >= SWIPE_SETTLE_THRESHOLD && !isSettled) {
+        // Swiped right enough to settle
+        runOnJS(handleSettleAction)();
       } else if (e.translationX < 0) {
-        // ── Delete direction
-        if (e.velocityX < -700 || e.translationX < -TX_AUTO_DELETE) {
-          // Fast flick OR long swipe → auto-delete
-          dismissLeft();
+        // Delete direction
+        if (e.velocityX < -650 || e.translationX < -TX_AUTO_DELETE) {
+          // Fast flick or deep swipe -> auto delete
+          runOnJS(handleDeleteAction)();
         } else if (e.translationX < -TX_SNAP_AT) {
-          // Past halfway → snap open, show delete button
-          translateX.value = withSpring(-TX_DELETE_W, { damping: 20, stiffness: 200 });
+          // Snap open delete button
+          translateX.value = withSpring(-TX_DELETE_W, { damping: 20, stiffness: 220 });
         } else {
-          // Short swipe → snap back
-          translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
+          translateX.value = withSpring(0, { damping: 22, stiffness: 260 });
         }
-
       } else {
-        // Right swipe but not far enough or not unlocked → snap back
-        translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
+        translateX.value = withSpring(0, { damping: 22, stiffness: 260 });
       }
     });
 
-  // ── Animated styles
-  const rowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.value }] }));
-  const wrapStyle = useAnimatedStyle(() => ({ opacity: rowOpacity.value, height: rowHeight.value }));
-  // Settle underlay: fades in as card slides RIGHT
-  const settleOp = useAnimatedStyle(() => ({
-    opacity: Math.min(Math.max(translateX.value / SWIPE_SETTLE, 0), 1),
+  // Animated Styles
+  const cardAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { scale: pressScale.value },
+    ],
   }));
-  // Delete underlay: fades in as card slides LEFT
-  const deleteOp = useAnimatedStyle(() => ({
-    opacity: Math.min(Math.max(-translateX.value / (TX_DELETE_W * 0.55), 0), 1),
+
+  const wrapAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: rowOpacity.value,
   }));
-  const glowStyle = useAnimatedStyle(() => ({ opacity: glowOp.value }));
+
+  const settleUnderlayStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(Math.max(translateX.value / SWIPE_SETTLE_THRESHOLD, 0), 1),
+  }));
+
+  const deleteUnderlayStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(Math.max(-translateX.value / TX_SNAP_AT, 0), 1),
+  }));
 
   const cardBg = colors.surface.sheet;
 
   return (
-    <Animated.View style={wrapStyle}>
-
-      {/* ── Settle underlay (left side, revealed on rightward swipe) ── */}
-      {payment.status !== 'SETTLED' && (
-        <Animated.View
-          style={[
-            styles.underlaySettle,
-            settleOp,
-            { backgroundColor: colors.status.income, height: ROW_HEIGHT },
-          ]}
-        >
-          <Ionicons name="checkmark-circle-outline" size={20} color={colors.white} />
-          <AppText variant="labelSM" style={[styles.underlayText, { color: colors.white }]}>Settle</AppText>
+    <Animated.View style={[styles.rowWrapper, wrapAnimatedStyle]}>
+      {/* ── Settle Underlay (Left to Right) ── */}
+      {!isSettled && (
+        <Animated.View style={[styles.underlaySettle, settleUnderlayStyle, { backgroundColor: colors.status.income }]}>
+          <Ionicons name="checkmark-circle" size={22} color={colors.white} />
+          <AppText variant="labelSM" style={[styles.underlayText, { color: colors.white }]}>
+            Mark Settled
+          </AppText>
         </Animated.View>
       )}
 
-      {/* ── Delete underlay (right side, revealed on leftward swipe) ── */}
-      {payment.status !== 'SETTLED' && (
-        <Animated.View
-          style={[
-            styles.underlayDelete,
-            deleteOp,
-            { backgroundColor: colors.status.expense, height: ROW_HEIGHT },
-          ]}
-        >
-          <Pressable onPress={dismissLeft} style={styles.underlayDeletePressable}>
-            <AppText variant="labelSM" style={[styles.underlayText, { color: colors.white }]}>Delete</AppText>
-            <Ionicons name="trash-outline" size={18} color={colors.white} />
-          </Pressable>
-        </Animated.View>
-      )}
+      {/* ── Delete Underlay (Right to Left) ── */}
+      <Animated.View style={[styles.underlayDelete, deleteUnderlayStyle, { backgroundColor: colors.status.expense }]}>
+        <Pressable onPress={handleDeleteAction} style={styles.underlayDeletePressable}>
+          <Ionicons name="trash-outline" size={20} color={colors.white} />
+          <AppText variant="labelSM" style={[styles.underlayText, { color: colors.white }]}>
+            Delete
+          </AppText>
+        </Pressable>
+      </Animated.View>
 
-      {/* ── Unlock glow ring ── */}
-      {payment.status !== 'SETTLED' && (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.unlockGlow,
-            { borderColor: colors.status.income, height: ROW_HEIGHT },
-            glowStyle,
-          ]}
-        />
-      )}
-
+      {/* ── Main Interactive Card ── */}
       <GestureDetector gesture={panGesture}>
         <Pressable
-          onLongPress={unlock}
-          delayLongPress={340}
-          disabled={payment.status === 'SETTLED'}
+          onPressIn={() => {
+            pressScale.value = withSpring(0.985, { damping: 15 });
+          }}
+          onPressOut={() => {
+            pressScale.value = withSpring(1, { damping: 15 });
+          }}
           onPress={() => {
-            // If row is open (swiped left), tap card to close
             if (translateX.value < -8) {
+              // Tap to snap back if swiped open
               translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
             } else {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
               onPress(payment);
             }
           }}
-          style={{ zIndex: 1 }}
+          style={styles.pressableCard}
         >
           <Animated.View
             style={[
-              styles.row,
-              rowStyle,
+              styles.card,
+              cardAnimatedStyle,
               {
                 backgroundColor: cardBg,
-                borderColor: isSettled ? colors.glass.border + '18' : colors.glass.border,
-                shadowColor: colors.black,
-                opacity: isSettled ? 0.62 : 1,
+                borderColor: isSettled ? colors.glass.border + '14' : colors.glass.border,
+                opacity: isSettled ? 0.72 : 1,
               },
-              isSettled && {
-                shadowOpacity: 0,
-                elevation: 0,
-              }
             ]}
           >
-            {/* Timeline dot */}
-            <View style={[styles.dot, { backgroundColor: dotColor }]} />
+            {/* Top Primary Row */}
+            <View style={styles.cardHeaderRow}>
+              {/* Category Squircle with Micro Pulse Dot */}
+              <View style={styles.iconWrapper}>
+                <View
+                  style={[
+                    styles.iconBox,
+                    { backgroundColor: catColor + (isDark ? '24' : '16') },
+                  ]}
+                >
+                  <Ionicons name={catMeta.icon} size={18} color={catColor} />
+                </View>
+                {/* Status Dot */}
+                <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
+              </View>
 
-            {/* Category icon */}
-            <View style={[styles.iconBox, { backgroundColor: dotColor + (isDark ? '28' : '18') }]}>
-              <Ionicons
-                name={CATEGORY_ICON[payment.category] ?? 'ellipsis-horizontal-outline'}
-                size={16}
-                color={dotColor}
-              />
-            </View>
+              {/* Title & Metadata */}
+              <View style={styles.infoCol}>
+                <View style={styles.titleRow}>
+                  <AppText
+                    variant="labelMD"
+                    color={isSettled ? colors.text.secondary : colors.text.primary}
+                    numberOfLines={1}
+                    style={[styles.billTitle, isSettled && styles.settledTitle]}
+                  >
+                    {payment.title}
+                  </AppText>
+                  {payment.isRecurring && (
+                    <View style={[styles.recurringChip, { backgroundColor: colors.glass.backgroundMid }]}>
+                      <Ionicons name="repeat" size={9} color={colors.text.tertiary} />
+                      <AppText style={[styles.recurringText, { color: colors.text.tertiary }]}>
+                        {payment.recurringInterval || 'Monthly'}
+                      </AppText>
+                    </View>
+                  )}
+                </View>
 
-            {/* Text body */}
-            <View style={styles.body}>
-              <AppText variant="labelMD" color={colors.text.primary} numberOfLines={1}>
-                {payment.title}
-              </AppText>
-              <View style={styles.subtitleRow}>
-                {account && (
-                  <View style={[styles.accountBadge, { backgroundColor: account.color + '15' }]}>
-                    <Ionicons name={account.icon as any} size={9} color={account.color} />
-                    <AppText style={[styles.accountLabel, { color: account.color }]}>
-                      {account.name}
+                {/* Badges: Due Date & Account */}
+                <View style={styles.chipsRow}>
+                  {/* Urgency Pill */}
+                  <View
+                    style={[
+                      styles.urgencyPill,
+                      {
+                        backgroundColor: isSettled
+                          ? colors.status.income + '16'
+                          : isOverdue
+                            ? colors.status.expense + '18'
+                            : urgent || days === 0
+                              ? colors.status.warning + '18'
+                              : colors.glass.backgroundMid,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        isSettled
+                          ? 'checkmark-circle'
+                          : isOverdue
+                            ? 'alert-circle'
+                            : urgent || days === 0
+                              ? 'time-outline'
+                              : 'calendar-outline'
+                      }
+                      size={10}
+                      color={
+                        isSettled
+                          ? colors.status.income
+                          : isOverdue
+                            ? colors.status.expense
+                            : urgent || days === 0
+                              ? colors.status.warning
+                              : colors.text.secondary
+                      }
+                    />
+                    <AppText
+                      style={[
+                        styles.urgencyText,
+                        {
+                          color: isSettled
+                            ? colors.status.income
+                            : isOverdue
+                              ? colors.status.expense
+                              : urgent || days === 0
+                                ? colors.status.warning
+                                : colors.text.secondary,
+                        },
+                      ]}
+                    >
+                      {isSettled
+                        ? 'Settled'
+                        : isOverdue
+                          ? `${Math.abs(days) || 1}d overdue`
+                          : days === 0
+                            ? 'Due today'
+                            : `${formattedDate} · in ${days}d`}
                     </AppText>
                   </View>
-                )}
 
-                <AppText variant="caption" color={colors.text.tertiary}>
-                  {payment.status === 'SETTLED'
-                    ? '✓ Settled'
-                    : payment.status === 'OVERDUE'
-                      ? `${Math.abs(days)}d overdue`
-                      : days === 0
-                        ? 'Due today'
-                        : `Due in ${days}d`}
-                  {payment.isRecurring ? '  ·  ↻' : ''}
+                  {/* Bank Account Pill */}
+                  {account && (
+                    <View style={[styles.accountPill, { backgroundColor: account.color + '14' }]}>
+                      <View style={[styles.accountMiniDot, { backgroundColor: account.color }]} />
+                      <AppText style={[styles.accountLabel, { color: account.color }]} numberOfLines={1}>
+                        {account.name}
+                      </AppText>
+                    </View>
+                  )}
+                </View>
+              </View>
+
+              {/* Right Side: Amount & CTA */}
+              <View style={styles.amountCol}>
+                <AppText
+                  variant="labelLG"
+                  style={[
+                    styles.amountText,
+                    {
+                      color: isSettled
+                        ? colors.status.income
+                        : isOverdue
+                          ? colors.status.expense
+                          : colors.text.primary,
+                    },
+                  ]}
+                >
+                  {symbol}{remaining.toFixed(remaining % 1 === 0 ? 0 : 2)}
                 </AppText>
 
-                {/* State hint badges */}
-                {payment.status !== 'SETTLED' && !isUnlocked && (
-                  <View style={[styles.holdHint, { backgroundColor: colors.text.tertiary + '18' }]}>
-                    <AppText style={{ fontSize: 9, color: colors.text.tertiary, fontWeight: '600', letterSpacing: 0.3 }}>
-                      HOLD
-                    </AppText>
+                {/* Quick Action Buttons */}
+                {!isSettled ? (
+                  <View style={styles.actionButtonGroup}>
+                    {/* Pay Button (Opens Partial/Full Payment Sheet) */}
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                        onPress(payment);
+                      }}
+                      hitSlop={4}
+                      style={[
+                        styles.payPill,
+                        {
+                          backgroundColor: colors.brand.primary + '18',
+                          borderColor: colors.brand.primary + '40',
+                        },
+                      ]}
+                    >
+                      <AppText style={[styles.payPillText, { color: colors.brand.primary }]}>
+                        Pay
+                      </AppText>
+                      <Ionicons name="arrow-forward" size={10} color={colors.brand.primary} />
+                    </Pressable>
+
+                    {/* Quick 1-Tap Settle Checkmark */}
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleSettleAction();
+                      }}
+                      hitSlop={6}
+                      style={[
+                        styles.quickCheckBtn,
+                        {
+                          backgroundColor: colors.status.income + '18',
+                          borderColor: colors.status.income + '35',
+                        },
+                      ]}
+                    >
+                      <Ionicons name="checkmark" size={12} color={colors.status.income} />
+                    </Pressable>
                   </View>
-                )}
-                {payment.status !== 'SETTLED' && isUnlocked && (
-                  <View style={[styles.holdHint, { backgroundColor: colors.status.income + '20' }]}>
-                    <Ionicons name="arrow-forward" size={9} color={colors.status.income} />
-                    <AppText style={{ fontSize: 9, color: colors.status.income, fontWeight: '700', letterSpacing: 0.3 }}>
-                      SWIPE
+                ) : (
+                  <View style={[styles.settledBadge, { backgroundColor: colors.status.income + '18' }]}>
+                    <Ionicons name="checkmark-done" size={11} color={colors.status.income} />
+                    <AppText style={[styles.settledBadgeText, { color: colors.status.income }]}>
+                      Paid
                     </AppText>
                   </View>
                 )}
               </View>
+            </View>
 
-              {/* Progress bar inside body */}
-              {paid > 0 && payment.status !== 'SETTLED' && (
+            {/* Bottom Progress Row (For Partial Payments) */}
+            {paid > 0 && !isSettled && (
+              <View style={styles.progressContainer}>
                 <View style={[styles.progressTrack, { backgroundColor: colors.glass.backgroundMid }]}>
                   <View
                     style={[
                       styles.progressFill,
                       {
-                        width: `${progressPct * 100}%` as any,
-                        backgroundColor: dotColor,
+                        width: `${Math.max(4, Math.min(100, progressPct * 100))}%`,
+                        backgroundColor: catColor,
                       },
                     ]}
                   />
                 </View>
-              )}
-            </View>
-
-            {/* Amount */}
-            <View style={styles.right}>
-              <AppText
-                variant="labelLG"
-                style={[
-                  styles.amount,
-                  {
-                    color: payment.status === 'SETTLED'
-                      ? colors.status.income
-                      : payment.status === 'OVERDUE'
-                        ? colors.status.expense
-                        : colors.text.primary,
-                  },
-                ]}
-              >
-                {symbol}{remaining.toFixed(2)}
-              </AppText>
-              {paid > 0 && payment.status !== 'SETTLED' && (
-                <AppText variant="caption" color={colors.text.tertiary} style={{ fontSize: 9, marginTop: 2 }}>
-                  of {symbol}{payment.amount.toFixed(0)}
-                </AppText>
-              )}
-            </View>
+                <View style={styles.progressMetaRow}>
+                  <AppText style={[styles.progressMetaText, { color: colors.text.tertiary }]}>
+                    Paid {symbol}{paid.toFixed(0)} ({Math.round(progressPct * 100)}%)
+                  </AppText>
+                  <AppText style={[styles.progressRemainingText, { color: catColor }]}>
+                    {symbol}{remaining.toFixed(0)} left of {symbol}{payment.amount.toFixed(0)}
+                  </AppText>
+                </View>
+              </View>
+            )}
           </Animated.View>
         </Pressable>
       </GestureDetector>
@@ -362,7 +468,7 @@ const PaymentRow = memo(function PaymentRow({ payment, onSettle, onDelete, onPre
   );
 });
 
-// ─── Timeline ─────────────────────────────────────────────────────────────────
+// ─── Timeline Container Component ──────────────────────────────────────────────
 
 interface PlannedPaymentsTimelineProps {
   payments: PlannedPayment[];
@@ -373,6 +479,7 @@ interface PlannedPaymentsTimelineProps {
 
 export function PlannedPaymentsTimeline({ payments, onSettle, onDelete, onPress }: PlannedPaymentsTimelineProps) {
   const { colors } = useTheme();
+  const { symbol } = useFormatCurrency();
 
   const activePayments = payments
     .filter((p) => p.status !== 'SETTLED')
@@ -382,29 +489,38 @@ export function PlannedPaymentsTimeline({ payments, onSettle, onDelete, onPress 
     .filter((p) => p.status === 'SETTLED')
     .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
 
+  const totalUpcoming = activePayments.reduce((sum, p) => sum + Math.max(0, p.amount - (p.amountPaid ?? 0)), 0);
+
   if (!payments.length) return null;
 
   return (
     <View style={styles.container}>
-      {/* Title + dual gesture hints */}
-      <View style={styles.titleRow}>
-        <AppText variant="headingSM" color={colors.text.primary}>Planned Payments</AppText>
-        <View style={styles.hintGroup}>
-          <View style={[styles.hint, { backgroundColor: colors.status.expense + '12', borderColor: colors.status.expense + '30' }]}>
-            <Ionicons name="arrow-back-outline" size={10} color={colors.status.expense} />
-            <AppText style={{ color: colors.status.expense, fontSize: 9, fontWeight: '700' }}>Delete</AppText>
-          </View>
-          <View style={[styles.hint, { backgroundColor: colors.brand.primary + '15', borderColor: colors.brand.primary + '30' }]}>
-            <Ionicons name="hand-left-outline" size={10} color={colors.brand.primary} />
-            <AppText style={{ color: colors.brand.primary, fontSize: 9, fontWeight: '700' }}>Hold settle</AppText>
-          </View>
+      {/* Clean Header Bar */}
+      <View style={styles.headerBar}>
+        <View>
+          <AppText variant="headingSM" color={colors.text.primary} style={styles.headerTitle}>
+            Planned Payments
+          </AppText>
+          {activePayments.length > 0 && (
+            <AppText variant="caption" color={colors.text.tertiary} style={styles.headerSubtitle}>
+              {activePayments.length} upcoming · {symbol}{totalUpcoming.toLocaleString()} pending
+            </AppText>
+          )}
+        </View>
+
+        {/* Minimalist Micro Gesture Indicator */}
+        <View style={styles.gestureIndicator}>
+          <Ionicons name="swap-horizontal" size={11} color={colors.text.tertiary} />
+          <AppText style={[styles.gestureIndicatorText, { color: colors.text.tertiary }]}>
+            Swipe left/right
+          </AppText>
         </View>
       </View>
 
-      {/* Active Section */}
+      {/* Upcoming Bills List */}
       {activePayments.length > 0 && (
         <View style={styles.section}>
-          <AppText variant="labelSM" color={colors.text.tertiary} style={styles.sectionTitle}>
+          <AppText variant="labelSM" color={colors.text.tertiary} style={styles.sectionHeader}>
             UPCOMING ({activePayments.length})
           </AppText>
           <View style={styles.list}>
@@ -415,11 +531,11 @@ export function PlannedPaymentsTimeline({ payments, onSettle, onDelete, onPress 
         </View>
       )}
 
-      {/* Settled Section */}
+      {/* Settled Bills List */}
       {settledPayments.length > 0 && (
-        <View style={[styles.section, activePayments.length > 0 && { marginTop: Spacing['4'] }]}>
-          <AppText variant="labelSM" color={colors.text.tertiary} style={styles.sectionTitle}>
-            SETTLED & COMPLETED ({settledPayments.length})
+        <View style={[styles.section, activePayments.length > 0 && { marginTop: Spacing['3'] }]}>
+          <AppText variant="labelSM" color={colors.text.tertiary} style={styles.sectionHeader}>
+            COMPLETED & SETTLED ({settledPayments.length})
           </AppText>
           <View style={styles.list}>
             {settledPayments.map((p) => (
@@ -432,133 +548,284 @@ export function PlannedPaymentsTimeline({ payments, onSettle, onDelete, onPress 
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Stylesheet ────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { gap: Spacing['3'] },
-  titleRow: {
+  container: {
+    gap: Spacing['3'],
+  },
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 2,
+    marginBottom: Spacing['1'],
   },
-  hintGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing['2'],
+  headerTitle: {
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
-  hint: {
+  headerSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  gestureIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: Radius.full,
-    borderWidth: 1,
   },
-  list: { gap: Spacing['2'] },
-  section: { gap: Spacing['2'] },
-  sectionTitle: {
-    fontSize: 9.5,
+  gestureIndicatorText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  section: {
+    gap: Spacing['2'],
+  },
+  sectionHeader: {
+    fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.8,
-    marginBottom: Spacing['1'],
+    marginBottom: 2,
+  },
+  list: {
+    gap: Spacing['2'],
   },
 
-  // ── Underlays ──────────────────────────────────────────────────────────────
-
-  // Left underlay (green, settle — slides in as card moves right)
+  // ── Row Wrapper & Underlays ──────────────────────────────────────────────────
+  rowWrapper: {
+    position: 'relative',
+    borderRadius: Radius.xl,
+    overflow: 'hidden',
+  },
+  pressableCard: {
+    zIndex: 2,
+  },
   underlaySettle: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
+    ...StyleSheet.absoluteFill,
     borderRadius: Radius.xl,
     flexDirection: 'row',
     alignItems: 'center',
     paddingLeft: Spacing['5'],
     gap: Spacing['2'],
+    zIndex: 1,
   },
-  // Right underlay (red, delete — slides in as card moves left)
   underlayDelete: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    width: TX_DELETE_W + 20,
+    ...StyleSheet.absoluteFill,
     borderRadius: Radius.xl,
-  },
-  underlayDeletePressable: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
+    zIndex: 1,
+  },
+  underlayDeletePressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingRight: Spacing['5'],
-    gap: Spacing['2'],
+    gap: 6,
+    height: '100%',
   },
-  underlayText: { fontWeight: '700', fontSize: 13 },
+  underlayText: {
+    fontWeight: '700',
+    fontSize: 12,
+  },
 
-  // ── Glow ring ─────────────────────────────────────────────────────────────
-  unlockGlow: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
+  // ── Main Card ────────────────────────────────────────────────────────────────
+  card: {
     borderRadius: Radius.xl,
-    borderWidth: 2,
-    zIndex: 2,
+    borderWidth: 1,
+    paddingHorizontal: Spacing['4'],
+    paddingVertical: Spacing['3'],
+    gap: Spacing['2'],
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 1.5,
+      },
+    }),
   },
-
-  // ── Row card ───────────────────────────────────────────────────────────────
-  row: {
+  cardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing['3'],
-    paddingHorizontal: Spacing['4'],
-    paddingVertical: Spacing['3'],
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    minHeight: ROW_HEIGHT,
-    ...Platform.select({
-      ios: { shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
-      android: { elevation: 1 },
-    }),
   },
-  dot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+
+  // Category Icon & Pulse Dot
+  iconWrapper: {
+    position: 'relative',
+  },
   iconBox: {
-    width: 36, height: 36, borderRadius: Radius.md,
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  body: { flex: 1, gap: 3 },
-  subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  holdHint: {
+  statusDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+
+  // Info Column
+  infoCol: {
+    flex: 1,
+    gap: 4,
+  },
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    gap: 6,
+    flexWrap: 'nowrap',
   },
-  accountBadge: {
+  billTitle: {
+    fontWeight: '700',
+    fontSize: 14,
+    flexShrink: 1,
+  },
+  settledTitle: {
+    textDecorationLine: 'line-through',
+  },
+  recurringChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
     paddingHorizontal: 5,
     paddingVertical: 1.5,
-    borderRadius: 4,
+    borderRadius: Radius.sm,
   },
-  accountLabel: {
-    fontSize: 9,
+  recurringText: {
+    fontSize: 9.5,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+
+  // Chips: Urgency & Account
+  chipsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  urgencyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: Radius.full,
+  },
+  urgencyText: {
+    fontSize: 10,
     fontWeight: '700',
   },
+  accountPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.full,
+  },
+  accountMiniDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  accountLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  // Amount & Action Column
+  amountCol: {
+    alignItems: 'flex-end',
+    gap: 5,
+    flexShrink: 0,
+  },
+  amountText: {
+    fontSize: 14.5,
+    fontWeight: '800',
+  },
+  actionButtonGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  payPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
+  payPillText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  quickCheckBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  settledBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: Radius.full,
+  },
+  settledBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  // Partial Payment Progress Bar
+  progressContainer: {
+    gap: 3,
+    marginTop: 2,
+    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(150, 150, 150, 0.12)',
+  },
   progressTrack: {
-    height: 3,
-    borderRadius: 1.5,
-    marginTop: 4,
+    height: 4,
+    borderRadius: 2,
     overflow: 'hidden',
   },
   progressFill: {
-    height: 3,
-    borderRadius: 1.5,
+    height: 4,
+    borderRadius: 2,
   },
-  right: { alignItems: 'flex-end', flexShrink: 0 },
-  amount: { fontSize: 14, fontWeight: '700' },
+  progressMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  progressMetaText: {
+    fontSize: 9.5,
+    fontWeight: '500',
+  },
+  progressRemainingText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+  },
 });
