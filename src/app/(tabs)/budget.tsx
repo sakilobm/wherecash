@@ -105,8 +105,8 @@ export default function BudgetScreen() {
       <AddPaymentSheet
         visible={screen.addPaymentVisible}
         onClose={screen.closeAddPayment}
-        onSubmit={({ title, amount, dueDate, category, accountId }) =>
-          screen.addPayment({ title, amount, dueDate, category, accountId, isRecurring: false })
+        onSubmit={(data) =>
+          screen.addPayment({ ...data, isRecurring: data.isRecurring ?? true })
         }
       />
 
@@ -127,7 +127,7 @@ export default function BudgetScreen() {
         }}
       />
 
-      <FAB icon="add" label="Payment" onPress={screen.openAddPayment} />
+      <FAB icon="add" label="Budget" onPress={screen.openAddPayment} />
     </SafeAreaView>
   );
 }

@@ -264,7 +264,9 @@ export function AddBudgetLimitSheet({ visible, onClose, defaultCategory }: Props
               >
                 <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
                 <AppText style={s.submitBtnText}>
-                  Save Budget {evaluatedLimit > 0 ? `(${symbol}${evaluatedLimit.toLocaleString()})` : ''}
+                  {existing
+                    ? `Save Budget ${evaluatedLimit > 0 ? `(${symbol}${evaluatedLimit.toLocaleString()})` : ''}`
+                    : `Establish ${catInfo.label} Budget ${evaluatedLimit > 0 ? `(${symbol}${evaluatedLimit.toLocaleString()})` : ''}`}
                 </AppText>
               </Pressable>
             }
@@ -368,6 +370,57 @@ export function AddBudgetLimitSheet({ visible, onClose, defaultCategory }: Props
                 </Animated.View>
               )}
 
+              {/* 2. Category Selector Carousel (Only shown when creating NEW budget or no initial budget) */}
+              {!existing && (
+                <View style={s.sectionBlock}>
+                  <AppText variant="labelSM" color={colors.text.secondary} style={s.sectionTitle}>
+                    Choose Category
+                  </AppText>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={s.categoryChipsScroll}
+                  >
+                    {CATEGORIES.map((c) => {
+                      const isSelected = c.id === category;
+                      const hasLimit = existingBudgets.some((b) => b.category === c.id);
+                      return (
+                        <Pressable
+                          key={c.id}
+                          onPress={() => handleSelectCategory(c.id)}
+                          style={[
+                            s.categoryChip,
+                            {
+                              backgroundColor: isSelected ? c.color + '22' : colors.glass.background,
+                              borderColor: isSelected ? c.color : colors.glass.border,
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={c.icon as any}
+                            size={14}
+                            color={isSelected ? c.color : colors.text.secondary}
+                          />
+                          <AppText
+                            variant="caption"
+                            style={{
+                              color: isSelected ? c.color : colors.text.secondary,
+                              fontWeight: isSelected ? '700' : '500',
+                              fontSize: 12,
+                            }}
+                          >
+                            {c.label}
+                          </AppText>
+                          {hasLimit && (
+                            <View style={[s.dotActive, { backgroundColor: isSelected ? c.color : colors.text.tertiary }]} />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+
               {/* Exact Status Card with 2-Column Metrics & Vertical Divider */}
               <View style={[s.statusCard, { backgroundColor: catInfo.color + '10', borderColor: catInfo.color + '28' }]}>
                 <View style={s.statusCardHeader}>
@@ -422,7 +475,7 @@ export function AddBudgetLimitSheet({ visible, onClose, defaultCategory }: Props
                 <View style={s.statusMetricsRow}>
                   <View style={s.metricCol}>
                     <AppText variant="caption" color={colors.text.tertiary} style={{ fontSize: 11 }}>
-                      Spent so far
+                      {existing ? 'Spent so far' : 'Past Spending'}
                     </AppText>
                     <AppText variant="labelLG" color={colors.text.primary} style={{ fontWeight: '800' }}>
                       {symbol}{spentSoFar.toLocaleString()}
@@ -433,25 +486,83 @@ export function AddBudgetLimitSheet({ visible, onClose, defaultCategory }: Props
 
                   <View style={s.metricCol}>
                     <AppText variant="caption" color={colors.text.tertiary} style={{ fontSize: 11 }}>
-                      {existing && evaluatedLimit > 0 && evaluatedLimit !== currentLimit ? 'New Remaining' : 'Remaining'}
+                      {existing
+                        ? (evaluatedLimit > 0 && evaluatedLimit !== currentLimit ? 'New Remaining' : 'Remaining')
+                        : 'Daily Allowance'}
                     </AppText>
-                    <AppText
-                      variant="labelLG"
-                      style={{
-                        fontWeight: '800',
-                        color: (existing && evaluatedLimit > 0 && evaluatedLimit !== currentLimit
+                    {existing ? (
+                      <AppText
+                        variant="labelLG"
+                        style={{
+                          fontWeight: '800',
+                          color: (evaluatedLimit > 0 && evaluatedLimit !== currentLimit
+                            ? (evaluatedLimit - spentSoFar)
+                            : currentRemaining) < 0
+                            ? colors.status.expense
+                            : colors.status.income,
+                        }}
+                      >
+                        {symbol}{(evaluatedLimit > 0 && evaluatedLimit !== currentLimit
                           ? (evaluatedLimit - spentSoFar)
-                          : currentRemaining) < 0
-                          ? colors.status.expense
-                          : colors.status.income,
-                      }}
-                    >
-                      {symbol}{(existing && evaluatedLimit > 0 && evaluatedLimit !== currentLimit
-                        ? (evaluatedLimit - spentSoFar)
-                        : (existing ? currentRemaining : Math.max((evaluatedLimit || 0) - spentSoFar, 0))).toLocaleString()}
-                    </AppText>
+                          : currentRemaining).toLocaleString()}
+                      </AppText>
+                    ) : (
+                      <AppText
+                        variant="labelLG"
+                        style={{
+                          fontWeight: '800',
+                          color: evaluatedLimit > 0 ? catInfo.color : colors.text.tertiary,
+                        }}
+                      >
+                        ≈ {symbol}{Math.round((evaluatedLimit || 0) / 30).toLocaleString()}/day
+                      </AppText>
+                    )}
                   </View>
                 </View>
+
+                {/* Safe Zone Indicator for New Budgets */}
+                {!existing && (
+                  <View style={[
+                    s.safeZoneBanner,
+                    {
+                      backgroundColor: evaluatedLimit <= 0
+                        ? colors.glass.background
+                        : evaluatedLimit < spentSoFar
+                        ? colors.status.warning + '18'
+                        : colors.status.income + '18',
+                      borderColor: evaluatedLimit <= 0
+                        ? colors.glass.border
+                        : evaluatedLimit < spentSoFar
+                        ? colors.status.warning + '35'
+                        : colors.status.income + '35',
+                    }
+                  ]}>
+                    <Ionicons
+                      name={evaluatedLimit <= 0 ? 'information-circle-outline' : evaluatedLimit < spentSoFar ? 'warning-outline' : 'shield-checkmark-outline'}
+                      size={13}
+                      color={evaluatedLimit <= 0 ? colors.text.tertiary : evaluatedLimit < spentSoFar ? colors.status.warning : colors.status.income}
+                    />
+                    <AppText
+                      variant="caption"
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '600',
+                        color: evaluatedLimit <= 0
+                          ? colors.text.secondary
+                          : evaluatedLimit < spentSoFar
+                          ? colors.status.warning
+                          : colors.status.income,
+                        flex: 1,
+                      }}
+                    >
+                      {evaluatedLimit <= 0
+                        ? `Set target cap to calculate daily runway & safe buffer.`
+                        : evaluatedLimit < spentSoFar
+                        ? `Already spent ${symbol}${spentSoFar.toLocaleString()}! Recommend at least ${symbol}${Math.ceil(spentSoFar * 1.15).toLocaleString()}.`
+                        : `Safe zone: ${symbol}${(evaluatedLimit - spentSoFar).toLocaleString()} remaining headroom this month.`}
+                    </AppText>
+                  </View>
+                )}
               </View>
 
               {/* 4. Big Bold Hero Numeric Display */}
@@ -521,7 +632,47 @@ export function AddBudgetLimitSheet({ visible, onClose, defaultCategory }: Props
                 </Pressable>
               )}
 
-              {/* 5. 1-Tap Quick Increment Chips */}
+              {/* 5. Quick Amount Selection */}
+              {!existing && (
+                <View style={s.starterPresetRow}>
+                  <AppText variant="caption" color={colors.text.tertiary} style={{ fontWeight: '700', fontSize: 11 }}>
+                    Quick Targets:
+                  </AppText>
+                  {[2000, 5000, 10000, 20000].map((amt) => {
+                    const isSelected = evaluatedLimit === amt;
+                    return (
+                      <Pressable
+                        key={amt}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setLimit(String(amt));
+                          setError(null);
+                        }}
+                        style={[
+                          s.starterChip,
+                          {
+                            backgroundColor: isSelected ? catInfo.color + '22' : colors.glass.background,
+                            borderColor: isSelected ? catInfo.color : colors.glass.border,
+                          },
+                        ]}
+                      >
+                        <AppText
+                          variant="caption"
+                          style={{
+                            color: isSelected ? catInfo.color : colors.text.secondary,
+                            fontWeight: isSelected ? '800' : '600',
+                            fontSize: 11,
+                          }}
+                        >
+                          {symbol}{amt >= 1000 ? `${amt / 1000}k` : amt}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* 1-Tap Quick Increment Chips */}
               <View style={s.presetRow}>
                 <Pressable
                   onPress={() => handleAddPreset(500)}
@@ -937,5 +1088,61 @@ const s = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 14,
+  },
+
+  // Category Selector Carousel
+  sectionBlock: {
+    gap: 6,
+    marginBottom: 2,
+  },
+  sectionTitle: {
+    paddingHorizontal: 2,
+    fontWeight: '700',
+  },
+  categoryChipsScroll: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
+  dotActive: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  // Safe Zone Banner
+  safeZoneBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    marginTop: 2,
+  },
+
+  // Starter Target Presets
+  starterPresetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  starterChip: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

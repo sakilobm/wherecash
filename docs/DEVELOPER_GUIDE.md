@@ -298,5 +298,17 @@ When an app forces both intentions into a single generic input sheet without cle
    - Cards have full breathing room, displaying only the category icon, name, clean progress bar, and spent ratio.
    - The entire card is a responsive touchable that smoothly opens the amount sheet.
 
+4. **New Budget Creation Ergonomics (Minimalist & Empowering UX)**:
+   - **Horizontal Category Carousel**: Only displayed when creating a *new* budget (`!existing`). Lets the user fluidly select or switch categories with active indicator dots.
+   - **Daily Allowance Benchmark**: Instantly calculates and displays the daily spending rate: `≈ ₹{Math.round(val / 30)} / day`, providing immediate mental grounding for whether the target is realistic.
+   - **Smart Safe Zone Financial Indicator**:
+     - *Buffer Warning*: If the entered target is less than past category spending (`val < spentSoFar`), an amber badge alerts the user with a recommended safe buffer (`+15%`).
+     - *Safe Zone*: When the target comfortably covers past spending, a green badge displays the safe remaining headroom (`✓ ₹{headroom} remaining headroom this month`).
+   - **Context-Aware CTA**: Button dynamically switches between `Establish [Category] Budget (₹X)` for new entries and `Save Budget (₹X)` for edits.
 
+5. **2-Step Progressive Wizard for Planned Payments (`AddPaymentSheet.tsx`)**:
+   - **Step 1 (Amount & Intent)**: Big 30px hero currency input, quick increment chips (`+₹500`, `+₹1k`, `+₹2k`, `+₹5k`), recurrence switch (`Monthly` vs `One-time`), and 1-tap template cards (`Netflix`, `Spotify`, `Rent`, `WiFi`, `Electricity`, `Gym`).
+   - **Auto-Advance Ergonomics**: Tapping any template automatically fills title, category, and standard amount, advancing smoothly to Step 2 with micro-haptics.
+   - **Step 2 (Fulfillment & Execution)**: Date picker, category capsule, payment account selector, and recurrence cycle (`weekly`, `monthly`, `yearly`).
+   - **Header Step Pill & Back Navigation**: Shows `Step 1/2` vs `Step 2/2` with back button support, eliminating multi-field visual overload completely.
 
