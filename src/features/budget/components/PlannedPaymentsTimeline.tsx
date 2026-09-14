@@ -10,7 +10,7 @@
  * @associatedFiles src/features/budget/hooks/useBudgetScreen.ts, src/app/(tabs)/budget.tsx
  */
 
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -23,6 +23,7 @@ import Animated, {
   withSpring,
   withTiming,
   runOnJS,
+  FadeInDown,
 } from 'react-native-reanimated';
 import {
   GestureDetector,
@@ -477,9 +478,14 @@ interface PlannedPaymentsTimelineProps {
   onPress: (payment: PlannedPayment) => void;
 }
 
+const INITIAL_UPCOMING_LIMIT = 5;
+
 export function PlannedPaymentsTimeline({ payments, onSettle, onDelete, onPress }: PlannedPaymentsTimelineProps) {
   const { colors } = useTheme();
   const { symbol } = useFormatCurrency();
+
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
+  const [settledExpanded, setSettledExpanded] = useState(false);
 
   const activePayments = payments
     .filter((p) => p.status !== 'SETTLED')
@@ -490,6 +496,11 @@ export function PlannedPaymentsTimeline({ payments, onSettle, onDelete, onPress 
     .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
 
   const totalUpcoming = activePayments.reduce((sum, p) => sum + Math.max(0, p.amount - (p.amountPaid ?? 0)), 0);
+
+  // Progressive slicing: mount only top 5 initially for zero frame-drops
+  const displayedActivePayments = showAllUpcoming
+    ? activePayments
+    : activePayments.slice(0, INITIAL_UPCOMING_LIMIT);
 
   if (!payments.length) return null;
 
@@ -517,31 +528,92 @@ export function PlannedPaymentsTimeline({ payments, onSettle, onDelete, onPress 
         </View>
       </View>
 
-      {/* Upcoming Bills List */}
+      {/* Upcoming Bills List (Progressively Windowed) */}
       {activePayments.length > 0 && (
         <View style={styles.section}>
           <AppText variant="labelSM" color={colors.text.tertiary} style={styles.sectionHeader}>
             UPCOMING ({activePayments.length})
           </AppText>
           <View style={styles.list}>
-            {activePayments.map((p) => (
+            {displayedActivePayments.map((p) => (
               <PaymentRow key={p.id} payment={p} onSettle={onSettle} onDelete={onDelete} onPress={onPress} />
             ))}
           </View>
+
+          {/* Show More / Show Less Toggle Button */}
+          {activePayments.length > INITIAL_UPCOMING_LIMIT && (
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                setShowAllUpcoming((prev) => !prev);
+              }}
+              style={[
+                styles.showMoreBtn,
+                {
+                  backgroundColor: colors.glass.backgroundMid,
+                  borderColor: colors.glass.border,
+                },
+              ]}
+            >
+              <AppText style={[styles.showMoreBtnText, { color: colors.brand.primary }]}>
+                {showAllUpcoming
+                  ? 'Show fewer upcoming bills'
+                  : `Show ${activePayments.length - INITIAL_UPCOMING_LIMIT} more upcoming bills`}
+              </AppText>
+              <Ionicons
+                name={showAllUpcoming ? 'chevron-up' : 'chevron-down'}
+                size={13}
+                color={colors.brand.primary}
+              />
+            </Pressable>
+          )}
         </View>
       )}
 
-      {/* Settled Bills List */}
+      {/* Settled Bills List (Lazy Accordion: 0 memory consumed until opened) */}
       {settledPayments.length > 0 && (
         <View style={[styles.section, activePayments.length > 0 && { marginTop: Spacing['3'] }]}>
-          <AppText variant="labelSM" color={colors.text.tertiary} style={styles.sectionHeader}>
-            COMPLETED & SETTLED ({settledPayments.length})
-          </AppText>
-          <View style={styles.list}>
-            {settledPayments.map((p) => (
-              <PaymentRow key={p.id} payment={p} onSettle={onSettle} onDelete={onDelete} onPress={onPress} />
-            ))}
-          </View>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              setSettledExpanded((prev) => !prev);
+            }}
+            style={[
+              styles.settledAccordionHeader,
+              {
+                backgroundColor: colors.glass.backgroundMid,
+                borderColor: colors.glass.border,
+              },
+            ]}
+          >
+            <View style={styles.settledHeaderLeft}>
+              <View style={[styles.settledCheckCircle, { backgroundColor: colors.status.income + '18' }]}>
+                <Ionicons name="checkmark-done" size={12} color={colors.status.income} />
+              </View>
+              <AppText variant="labelSM" color={colors.text.secondary} style={styles.settledAccordionTitle}>
+                COMPLETED & SETTLED ({settledPayments.length})
+              </AppText>
+            </View>
+            <View style={styles.settledHeaderRight}>
+              <AppText style={[styles.settledToggleLabel, { color: colors.text.tertiary }]}>
+                {settledExpanded ? 'Hide' : 'View'}
+              </AppText>
+              <Ionicons
+                name={settledExpanded ? 'chevron-up' : 'chevron-down'}
+                size={13}
+                color={colors.text.tertiary}
+              />
+            </View>
+          </Pressable>
+
+          {/* Lazy Rendered Settled Payments */}
+          {settledExpanded && (
+            <Animated.View entering={FadeInDown.duration(200)} style={[styles.list, { marginTop: Spacing['2'] }]}>
+              {settledPayments.map((p) => (
+                <PaymentRow key={p.id} payment={p} onSettle={onSettle} onDelete={onDelete} onPress={onPress} />
+              ))}
+            </Animated.View>
+          )}
         </View>
       )}
     </View>
@@ -593,6 +665,55 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: Spacing['2'],
+  },
+  showMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  showMoreBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  settledAccordionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing['3'],
+    paddingVertical: 10,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+  },
+  settledHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settledCheckCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settledAccordionTitle: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  settledHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  settledToggleLabel: {
+    fontSize: 11,
+    fontWeight: '700',
   },
 
   // ── Row Wrapper & Underlays ──────────────────────────────────────────────────

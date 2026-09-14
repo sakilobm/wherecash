@@ -346,4 +346,12 @@ When an app forces both intentions into a single generic input sheet without cle
 5. **Partial Payment Progress Bar**:
    - If `amountPaid > 0`, renders a clean 4px track with category color fill.
    - Shows exact breakdown: `Paid ₹500 (50%)` and `₹500 left of ₹1,000`.
+6. **Progressive Windowing & Memory Throttling**:
+   - Instead of mounting 50+ bills at once, `INITIAL_UPCOMING_LIMIT = 5` renders only the top 5 urgent bills.
+   - Remaining bills are windowed behind a clean, Reanimated toggle: `Show N more upcoming bills`.
+   - Eliminates initial mount lag and Garbage Collection pauses entirely.
+7. **Zero-Cost Lazy Accordion for Settled Bills**:
+   - Settled bills are past records that users rarely inspect daily.
+   - Wrapped in a lazy collapsible accordion: default state mounts ZERO child components.
+   - Only when user explicitly taps "View" does the list mount with `FadeInDown.duration(200)`.
 
