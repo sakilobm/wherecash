@@ -191,9 +191,6 @@ export function ImportSheet({ onClose }: Props) {
   const [pasteText, setPasteText] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Storage access variables
-  const storageGranted = usePreferencesStore((s) => s.storagePermissionGranted);
-  const setStorageGranted = usePreferencesStore((s) => s.setStoragePermissionGranted);
   const [fileMeta, setFileMeta] = useState<FileMetadata | null>(null);
   const [parsedTxns, setParsedTxns] = useState<ParsedTransaction[]>([]);
   const [importStats, setImportStats] = useState({
@@ -249,34 +246,6 @@ export function ImportSheet({ onClose }: Props) {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
-
-  // ── Handle source selection ──
-  const handleSourceSelect = useCallback((sourceId: ImportSource['id']) => {
-    Haptics.selectionAsync();
-    setSelectedSource(sourceId);
-    setErrorMsg(null);
-
-    if (sourceId === 'paste') {
-      setStep('paste');
-    } else {
-      // For actual file upload, check storage permission first
-      if (storageGranted) {
-        setStep('select_file');
-      } else {
-        setStep('permission');
-      }
-    }
-  }, [storageGranted]);
-
-  // ── Simulate storage permission approval ──
-  const handleGrantPermission = useCallback(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setStorageGranted(true);
-    // Smooth transition
-    setTimeout(() => {
-      setStep('select_file');
-    }, 400);
-  }, []);
 
   // ── Parse CSV text into transactions ──
   const parseCSV = useCallback((text: string): Array<Record<string, string>> => {
@@ -412,12 +381,12 @@ export function ImportSheet({ onClose }: Props) {
     return true;
   }, []);
 
-  // ── Open Native Document Picker ──
-  const handlePickFile = useCallback(async () => {
+  // ── Open Native Document Picker & Directly Process ──
+  const pickAndProcessFile = useCallback(async (source: ImportSource['id']) => {
     try {
       setErrorMsg(null);
       const res = await DocumentPicker.getDocumentAsync({
-        type: selectedSource === 'json' ? 'application/json' : '*/*',
+        type: source === 'json' ? 'application/json' : '*/*',
         copyToCacheDirectory: true,
       });
 
@@ -429,12 +398,16 @@ export function ImportSheet({ onClose }: Props) {
       const ext = file.name.split('.').pop()?.toLowerCase();
 
       // Simple format check
-      if (selectedSource === 'json' && ext !== 'json') {
-        setErrorMsg('Invalid file format. Please select a .json file.');
+      if (source === 'json' && ext !== 'json') {
+        const msg = 'Invalid file format. Please select a .json file.';
+        setErrorMsg(msg);
+        toast.error(msg);
         return;
       }
-      if ((selectedSource === 'csv' || selectedSource === 'bank') && ext !== 'csv') {
-        setErrorMsg('Invalid file format. Please select a .csv file.');
+      if ((source === 'csv' || source === 'bank') && ext !== 'csv') {
+        const msg = 'Invalid file format. Please select a .csv file.';
+        setErrorMsg(msg);
+        toast.error(msg);
         return;
       }
 
@@ -449,25 +422,47 @@ export function ImportSheet({ onClose }: Props) {
 
       // Parse depending on type
       let records: any[] = [];
-      if (selectedSource === 'json') {
+      if (source === 'json') {
         records = parseJSON(text);
       } else {
         const csvRows = parseCSV(text);
-        if (selectedSource === 'bank') {
+        if (source === 'bank') {
           records = csvRows.map(mapBankFields).filter(Boolean) as any[];
         } else {
           records = csvRows;
         }
       }
 
-      const hasValid = analyzeRecords(records, selectedSource!);
+      const hasValid = analyzeRecords(records, source);
       if (hasValid) {
         setStep('preview');
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to read file from storage.');
+      const msg = err.message || 'Failed to read file from storage.';
+      setErrorMsg(msg);
+      toast.error(msg);
     }
-  }, [selectedSource, parseCSV, parseJSON, mapBankFields, analyzeRecords]);
+  }, [parseCSV, parseJSON, mapBankFields, analyzeRecords]);
+
+  // ── Handle Source Selection (Immediate native file launch for files) ──
+  const handleSourceSelect = useCallback((sourceId: ImportSource['id']) => {
+    Haptics.selectionAsync();
+    setSelectedSource(sourceId);
+    setErrorMsg(null);
+
+    if (sourceId === 'paste') {
+      setStep('paste');
+    } else {
+      // Directly opens device storage file picker
+      pickAndProcessFile(sourceId);
+    }
+  }, [pickAndProcessFile]);
+
+  const handlePickFile = useCallback(() => {
+    if (selectedSource) {
+      pickAndProcessFile(selectedSource);
+    }
+  }, [selectedSource, pickAndProcessFile]);
 
   // Parse paste data and move to preview
   const handlePasteNext = useCallback(() => {
@@ -621,8 +616,10 @@ export function ImportSheet({ onClose }: Props) {
         {step !== 'importing' && (
           <Animated.View entering={FadeIn.duration(300)} style={is.stepRow}>
             {(['source', 'mapping', 'done'] as const).map((s, i) => {
-              const currentStepIdx = ['source', 'permission', 'select_file', 'paste', 'preview'].includes(step)
-                ? (['source', 'permission', 'select_file', 'paste'].includes(step) ? 0 : 1)
+              const currentStepIdx = ['source', 'paste'].includes(step)
+                ? 0
+                : step === 'preview'
+                ? 1
                 : 2;
               
               const isActive = currentStepIdx === i;
@@ -667,6 +664,7 @@ export function ImportSheet({ onClose }: Props) {
                           fontWeight: '800',
                           color: isActive || isPast ? '#FFF' : colors.text.tertiary,
                           includeFontPadding: false,
+                          textAlign: 'center',
                           textAlignVertical: 'center',
                         }}
                       >
@@ -688,6 +686,15 @@ export function ImportSheet({ onClose }: Props) {
             <AppText variant="bodySM" color={colors.text.secondary} style={{ marginBottom: 4 }}>
               Choose how you want to import your financial data.
             </AppText>
+
+            {errorMsg && (
+              <Animated.View entering={FadeInDown.duration(200)} style={is.errorRow}>
+                <Ionicons name="alert-circle" size={14} color="#EF4444" />
+                <AppText style={{ fontSize: 11, fontWeight: '600', color: '#EF4444', flex: 1 }}>
+                  {errorMsg}
+                </AppText>
+              </Animated.View>
+            )}
 
             {IMPORT_SOURCES.map((source, idx) => (
               <Animated.View
@@ -765,127 +772,7 @@ export function ImportSheet({ onClose }: Props) {
           </Animated.View>
         )}
 
-        {/* ════════════════════════════════════════════════════════════════════
-            STEP 2: Permission Request (Storage)
-           ════════════════════════════════════════════════════════════════════ */}
-        {step === 'permission' && (
-          <Animated.View entering={FadeInDown.springify().damping(20).stiffness(140)} style={is.content}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <Pressable onPress={() => setStep('source')} hitSlop={10}>
-                <Ionicons name="arrow-back" size={18} color={colors.text.secondary} />
-              </Pressable>
-              <AppText style={{ fontSize: 14, fontWeight: '700', color: colors.text.primary }}>
-                Storage Access Required
-              </AppText>
-            </View>
 
-            <View style={[is.permCard, { backgroundColor: cardBg, borderColor: colors.glass.border }]}>
-              <View style={is.permGraphicContainer}>
-                <LinearGradient
-                  colors={['#6C63FF', '#38BDF8']}
-                  style={is.permGlowCircle}
-                >
-                  <Ionicons name="folder-open-outline" size={36} color="#FFF" />
-                </LinearGradient>
-              </View>
-
-              <AppText style={is.permTitle}>Storage Permission Request</AppText>
-              <AppText style={[is.permDesc, { color: colors.text.secondary }]}>
-                WhereCash needs access to read transaction spreadsheets (.csv) and backups (.json) from your local device storage.
-              </AppText>
-
-              <View style={[is.permNoticeBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.015)' }]}>
-                <Ionicons name="shield-checkmark" size={16} color="#10B981" />
-                <AppText style={{ fontSize: 11, color: colors.text.secondary, flex: 1 }}>
-                  Privacy Safe: We only read files that you explicitly browse and select.
-                </AppText>
-              </View>
-            </View>
-
-            <Pressable
-              onPress={handleGrantPermission}
-              style={({ pressed }) => [
-                is.importBtn,
-                { opacity: pressed ? 0.9 : 1, marginTop: 12 },
-              ]}
-            >
-              <LinearGradient
-                colors={['#6C63FF', '#38BDF8']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={is.importBtnGrad}
-              >
-                <AppText style={{ fontSize: 14, fontWeight: '800', color: '#FFF' }}>
-                  Allow Storage Access
-                </AppText>
-              </LinearGradient>
-            </Pressable>
-          </Animated.View>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════════
-            STEP 3: Select File Zone
-           ════════════════════════════════════════════════════════════════════ */}
-        {step === 'select_file' && (
-          <Animated.View entering={FadeInDown.springify().damping(20).stiffness(140)} style={is.content}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Pressable onPress={() => setStep('source')} hitSlop={10}>
-                <Ionicons name="arrow-back" size={18} color={colors.text.secondary} />
-              </Pressable>
-              <AppText style={{ fontSize: 14, fontWeight: '700', color: colors.text.primary }}>
-                Import {selectedSource === 'json' ? 'JSON Backup' : selectedSource === 'bank' ? 'Bank Statement' : 'CSV File'}
-              </AppText>
-            </View>
-
-            {/* Clickable Pick Area */}
-            <Pressable
-              onPress={handlePickFile}
-              style={({ pressed }) => [
-                is.pickerCard,
-                {
-                  backgroundColor: cardBg,
-                  borderColor: errorMsg ? '#EF4444' + '40' : colors.glass.border,
-                  borderStyle: 'dashed',
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <View style={is.pickerIconWrap}>
-                <LinearGradient
-                  colors={selectedSource === 'json' ? ['#6C63FF', '#A78BFA'] : ['#10B981', '#059669']}
-                  style={is.pickerIconCircle}
-                >
-                  <Ionicons name="cloud-upload" size={28} color="#FFF" />
-                </LinearGradient>
-              </View>
-
-              <AppText style={{ fontSize: 15, fontWeight: '700', color: colors.text.primary, marginTop: 8 }}>
-                Browse Local Storage
-              </AppText>
-              <AppText variant="caption" color={colors.text.tertiary} style={{ textAlign: 'center', marginHorizontal: 24, marginTop: 4 }}>
-                {selectedSource === 'json'
-                  ? 'Select a JSON file containing database backups'
-                  : 'Select a CSV file containing transaction listings'
-                }
-              </AppText>
-
-              <View style={[is.pickerTypeBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)' }]}>
-                <AppText style={{ fontSize: 9, fontWeight: '800', color: colors.text.secondary }}>
-                  {selectedSource === 'json' ? 'SUPPORTED: .JSON' : 'SUPPORTED: .CSV'}
-                </AppText>
-              </View>
-            </Pressable>
-
-            {errorMsg && (
-              <Animated.View entering={FadeInDown.duration(200)} style={is.errorRow}>
-                <Ionicons name="alert-circle" size={14} color="#EF4444" />
-                <AppText style={{ fontSize: 11, fontWeight: '600', color: '#EF4444', flex: 1 }}>
-                  {errorMsg}
-                </AppText>
-              </Animated.View>
-            )}
-          </Animated.View>
-        )}
 
         {/* ════════════════════════════════════════════════════════════════════
             STEP 4: Paste Data View
@@ -975,7 +862,7 @@ export function ImportSheet({ onClose }: Props) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Pressable
                 onPress={() => {
-                  setStep(selectedSource === 'paste' ? 'paste' : 'select_file');
+                  setStep(selectedSource === 'paste' ? 'paste' : 'source');
                   setErrorMsg(null);
                 }}
                 hitSlop={10}
