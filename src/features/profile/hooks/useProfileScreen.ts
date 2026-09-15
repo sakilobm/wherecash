@@ -88,6 +88,8 @@ export function useProfileScreen() {
   const hapticLevel = usePreferencesStore((s) => s.hapticLevel);
   const notifPrefs = usePreferencesStore((s) => s.notifPrefs);
   const setNotifPrefs = usePreferencesStore((s) => s.setNotifPrefs);
+  const autoBackupEnabled = usePreferencesStore((s) => s.autoBackupEnabled);
+  const lastBackupTime = usePreferencesStore((s) => s.lastBackupTime);
 
   // Check on mount if a demo snapshot is available to undo
   useEffect(() => {
@@ -148,65 +150,66 @@ export function useProfileScreen() {
     const playStoreUrl = `https://play.google.com/store/apps/details?id=${pkg}`;
     Linking.canOpenURL(playStoreUrl)
       .then((supported) => {
-        if (supported) {
-          Linking.openURL(playStoreUrl);
-        } else {
-          Linking.openURL(`market://details?id=${pkg}`);
-        }
+        if (supported) Linking.openURL(playStoreUrl);
+        else toast.info('Play Store link not available in dev mode');
       })
-      .catch(() => {
-        Linking.openURL(playStoreUrl);
-      });
+      .catch(() => toast.error('Could not open store link'));
   }, []);
 
   return {
+    data: {
+      user,
+      txCount,
+      memberSince,
+      initials,
+    },
+
     hasSnapshot,
-    data: { user, txCount, memberSince, initials },
 
     sheets: {
       currency: {
         isOpen: currencySheet,
-        open:   () => setCurrencySheet(true),
+        open:   () => { Haptics.selectionAsync(); setCurrencySheet(true); },
         close:  () => setCurrencySheet(false),
       } satisfies SheetHandle,
       notifications: {
         isOpen: notifSheet,
-        open:   () => setNotifSheet(true),
+        open:   () => { Haptics.selectionAsync(); setNotifSheet(true); },
         close:  () => setNotifSheet(false),
       } satisfies SheetHandle,
       security: {
         isOpen: securitySheet,
-        open:   () => setSecuritySheet(true),
+        open:   () => { Haptics.selectionAsync(); setSecuritySheet(true); },
         close:  () => setSecuritySheet(false),
       } satisfies SheetHandle,
       haptics: {
         isOpen: hapticsSheet,
-        open:   () => setHapticsSheet(true),
+        open:   () => { Haptics.selectionAsync(); setHapticsSheet(true); },
         close:  () => setHapticsSheet(false),
       } satisfies SheetHandle,
       export: {
         isOpen: exportSheet,
-        open:   () => setExportSheet(true),
+        open:   () => { Haptics.selectionAsync(); setExportSheet(true); },
         close:  () => setExportSheet(false),
       } satisfies SheetHandle,
       help: {
         isOpen: helpSheet,
-        open:   () => setHelpSheet(true),
+        open:   () => { Haptics.selectionAsync(); setHelpSheet(true); },
         close:  () => setHelpSheet(false),
       } satisfies SheetHandle,
       backup: {
         isOpen: backupSheet,
-        open:   () => setBackupSheet(true),
+        open:   () => { Haptics.selectionAsync(); setBackupSheet(true); },
         close:  () => setBackupSheet(false),
       } satisfies SheetHandle,
       import: {
         isOpen: importSheet,
-        open:   () => setImportSheet(true),
+        open:   () => { Haptics.selectionAsync(); setImportSheet(true); },
         close:  () => setImportSheet(false),
       } satisfies SheetHandle,
       guides: {
         isOpen: guidesSheet,
-        open:   () => setGuidesSheet(true),
+        open:   () => { Haptics.selectionAsync(); setGuidesSheet(true); },
         close:  () => setGuidesSheet(false),
       } satisfies SheetHandle,
     },
@@ -214,7 +217,7 @@ export function useProfileScreen() {
     confirms: {
       signOut: {
         isVisible: signOutConfirm,
-        show:    () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); setSignOutConfirm(true); },
+        show:    () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setSignOutConfirm(true); },
         dismiss: () => setSignOutConfirm(false),
         confirm: confirmSignOut,
       } satisfies ConfirmHandle,
@@ -249,6 +252,10 @@ export function useProfileScreen() {
       security:      secPrefs,
       haptics: {
         level: hapticLevel,
+      },
+      backup: {
+        autoEnabled: autoBackupEnabled,
+        lastTime: lastBackupTime,
       },
       updateNotification: <K extends keyof NotifPrefs>(key: K, value: NotifPrefs[K]) => {
         Haptics.selectionAsync();

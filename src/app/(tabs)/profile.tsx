@@ -33,6 +33,7 @@ import { HapticSettingsSheet } from '@components/profile/HapticSettingsSheet';
 import { BackupSyncSheet } from '@components/profile/BackupSyncSheet';
 import { ImportSheet } from '@components/profile/ImportSheet';
 import { InteractiveGuidesSheet } from '@components/profile/InteractiveGuidesSheet';
+import { formatBackupDate } from '@/utils/backupManager';
 import { ConfirmModal } from '@components/ConfirmModal';
 import { AppText } from '@components/AppText';
 import { useTheme } from '@hooks/useTheme';
@@ -117,11 +118,38 @@ export default function ProfileScreen() {
         <SectionCard title="Data" delay={240} accentColor={colors.status.income}>
           <SettingRow
             animDelay={0}
-            icon="cloud-done-outline" iconColor={colors.status.income} label="Backup & Sync"
-            subtitle="Last synced: Today" onPress={sheets.backup.open}
+            icon="cloud-done-outline"
+            iconColor={colors.status.income}
+            label="Backup & Sync"
+            subtitle={
+              preferences.backup.lastTime
+                ? `Last: ${formatBackupDate(preferences.backup.lastTime)}`
+                : 'No backups yet'
+            }
+            onPress={sheets.backup.open}
             right={
-              <View style={[s.badge, { backgroundColor: colors.status.income + '18' }]}>
-                <AppText variant="caption" style={{ color: colors.status.income, fontSize: 10, fontWeight: '700' }}>ON</AppText>
+              <View
+                style={[
+                  s.badge,
+                  {
+                    backgroundColor: preferences.backup.autoEnabled
+                      ? colors.status.income + '18'
+                      : colors.glass.backgroundMid,
+                  },
+                ]}
+              >
+                <AppText
+                  variant="caption"
+                  style={{
+                    color: preferences.backup.autoEnabled
+                      ? colors.status.income
+                      : colors.text.tertiary,
+                    fontSize: 10,
+                    fontWeight: '700',
+                  }}
+                >
+                  {preferences.backup.autoEnabled ? 'ON' : 'OFF'}
+                </AppText>
               </View>
             }
           />

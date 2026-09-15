@@ -1,13 +1,20 @@
 /**
  * @file BackupSyncSheet.tsx
  * @architecture Presentation Layer — UI Component
- * @description Premium bottom-sheet content for managing full-fledged Backup & Sync.
- *   Features a hero sync-status card with gradient accents, glassmorphic database
- *   stats grid, and refined export/restore flows with modern UI polish.
- * @associatedFiles src/app/(tabs)/profile.tsx, src/features/profile/hooks/useProfileScreen.ts
+ * @description State-of-the-art Backup & Sync bottom-sheet for WhereCash.
+ *   - Real local-first database backup engine with sandboxed file snapshots
+ *   - Persistent auto-backup switch and frequency selectors (Daily, Weekly, On Change)
+ *   - Live local snapshots repository displaying retained backups with size, timestamp & records
+ *   - 1-tap Snapshot Restore, Native File Picker Restore (.json), and Manual Paste fallback
+ *   - 1-tap Snapshot Share / Export to external storage
+ *   - Real persistent notification tracking
+ * @associatedFiles
+ *   src/utils/backupManager.ts,
+ *   src/store/preferencesStore.ts,
+ *   src/app/(tabs)/profile.tsx
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -15,10 +22,10 @@ import {
   ScrollView,
   Switch,
   TextInput,
-  Share,
   ActivityIndicator,
   Platform,
   Animated,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,57 +35,81 @@ import { useTheme } from '@hooks/useTheme';
 import { Spacing, Radius } from '@constants/index';
 import { toast } from '@store/toastStore';
 
-// Import all Zustand stores
+// Stores
 import { useAccountStore } from '@store/accountStore';
 import { useTransactionStore } from '@store/transactionStore';
 import { useCategoryStore } from '@store/categoryStore';
-import { usePlannedPaymentsStore } from '@store/plannedPaymentsStore';
 import { useBudgetStore } from '@store/budgetStore';
 import { useLoansStore } from '@store/loansStore';
 import { useLedgerStore } from '@store/ledgerStore';
 import { usePreferencesStore } from '@store/preferencesStore';
+
+// Backup & Export Engine
+import {
+  createLocalBackup,
+  listLocalBackups,
+  deleteLocalBackup,
+  restoreFromFileUri,
+  restoreFromDocumentPicker,
+  restoreFromParsedPayload,
+  shareOrExportSnapshot,
+  formatBackupDate,
+  MAX_RETAINED_SNAPSHOTS,
+  type BackupSnapshot,
+} from '@/utils/backupManager';
 import { saveFileToDevice, shareTextContent, getExportFileName } from '@/utils/exportManager';
 
 interface Props {
   onClose: () => void;
 }
 
-type SyncStep = 'idle' | 'auth' | 'upload' | 'verify' | 'done';
+type SyncStep = 'idle' | 'reading' | 'saving' | 'done';
 
 const SYNC_STEPS: Record<SyncStep, { label: string; pct: number }> = {
-  idle:   { label: 'Ready to Sync',                pct: 0 },
-  auth:   { label: 'Securing cloud tunnel...',     pct: 25 },
-  upload: { label: 'Uploading database blocks...',  pct: 55 },
-  verify: { label: 'Verifying data integrity...',   pct: 85 },
-  done:   { label: 'Sync complete!',                pct: 100 },
+  idle:    { label: 'Ready to Backup',                pct: 0 },
+  reading: { label: 'Reading database records...',    pct: 35 },
+  saving:  { label: 'Writing local snapshot file...', pct: 80 },
+  done:    { label: 'Backup Secured!',                pct: 100 },
 };
 
-/** Stat tile accent colors */
 const STAT_COLORS = ['#6C63FF', '#10B981', '#F59E0B', '#3B82F6', '#EC4899', '#38BDF8'];
+
+const FREQUENCIES: { id: 'daily' | 'weekly' | 'on_change'; label: string }[] = [
+  { id: 'daily',     label: 'Daily' },
+  { id: 'weekly',    label: 'Weekly' },
+  { id: 'on_change', label: 'On Change' },
+];
 
 export function BackupSyncSheet({ onClose }: Props) {
   const { colors, isDark } = useTheme();
 
-  // ── Local settings & sync states ──────────────────────────────────────────────
-  const [autoSync, setAutoSync] = useState(true);
+  // ── Persistent Preferences Store ──────────────────────────────────────────────
+  const autoBackupEnabled    = usePreferencesStore((s) => s.autoBackupEnabled);
+  const setAutoBackupEnabled = usePreferencesStore((s) => s.setAutoBackupEnabled);
+  const autoBackupFrequency  = usePreferencesStore((s) => s.autoBackupFrequency);
+  const setAutoBackupFrequency = usePreferencesStore((s) => s.setAutoBackupFrequency);
+  const lastBackupTime       = usePreferencesStore((s) => s.lastBackupTime);
+
+  // ── Local State ───────────────────────────────────────────────────────────────
   const [syncState, setSyncState] = useState<SyncStep>('idle');
-  const [lastSynced, setLastSynced] = useState<string>('Today, 9:15 PM');
+  const [snapshots, setSnapshots] = useState<BackupSnapshot[]>([]);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [showRestoreArea, setShowRestoreArea] = useState(false);
   const [restorePayload, setRestorePayload] = useState('');
+  const [activeActionFile, setActiveActionFile] = useState<string | null>(null);
 
-  // ── Animated progress bar ─────────────────────────────────────────────────────
+  // ── Animated Values ───────────────────────────────────────────────────────────
   const progressAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim    = useRef(new Animated.Value(1)).current;
 
-  // ── Collect stats from stores ─────────────────────────────────────────────────
+  // ── Store record counts ───────────────────────────────────────────────────────
   const accountsCount = useAccountStore((s) => s.accounts.length);
   const txsCount      = useTransactionStore((s) => s.transactions.length);
   const catsCount     = useCategoryStore((s) => s.categories.length);
   const budgetsCount  = useBudgetStore((s) => s.budgets.length);
   const loansCount    = useLoansStore((s) => s.loans.length);
   const ledgerCount   = useLedgerStore((s) => s.entries.length);
-
-  const totalRecords = txsCount + accountsCount + catsCount + budgetsCount + loansCount + ledgerCount;
+  const totalRecords  = txsCount + accountsCount + catsCount + budgetsCount + loansCount + ledgerCount;
 
   const STATS = [
     { label: 'Transactions', count: txsCount,      icon: 'swap-horizontal-outline' as const },
@@ -89,50 +120,24 @@ export function BackupSyncSheet({ onClose }: Props) {
     { label: 'Ledgers',      count: ledgerCount,     icon: 'book-outline' as const },
   ];
 
-  // ── Trigger manual simulated sync ─────────────────────────────────────────────
-  const handleSyncNow = () => {
-    if (syncState !== 'idle') return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSyncState('auth');
-  };
+  // ── Load Physical Snapshots From Storage ─────────────────────────────────────
+  const refreshSnapshots = useCallback(async () => {
+    setLoadingSnapshots(true);
+    try {
+      const list = await listLocalBackups();
+      setSnapshots(list);
+    } catch (err) {
+      console.warn('Failed to load snapshots:', err);
+    } finally {
+      setLoadingSnapshots(false);
+    }
+  }, []);
 
-  // ── Sync step progression (simulated) ─────────────────────────────────────────
   useEffect(() => {
-    if (syncState === 'idle') return;
+    refreshSnapshots();
+  }, [refreshSnapshots]);
 
-    // Animate progress bar
-    Animated.spring(progressAnim, {
-      toValue: SYNC_STEPS[syncState].pct / 100,
-      useNativeDriver: false,
-      friction: 12,
-    }).start();
-
-    if (syncState === 'auth') {
-      const t = setTimeout(() => setSyncState('upload'), 1000);
-      return () => clearTimeout(t);
-    }
-    if (syncState === 'upload') {
-      const t = setTimeout(() => setSyncState('verify'), 1200);
-      return () => clearTimeout(t);
-    }
-    if (syncState === 'verify') {
-      const t = setTimeout(() => setSyncState('done'), 800);
-      return () => clearTimeout(t);
-    }
-    if (syncState === 'done') {
-      const t = setTimeout(() => {
-        setSyncState('idle');
-        progressAnim.setValue(0);
-        const now = new Date();
-        setLastSynced(`Today, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        toast.success('Database successfully synced with WhereKash Cloud!');
-      }, 700);
-      return () => clearTimeout(t);
-    }
-  }, [syncState]);
-
-  // ── Pulse animation on the status dot ─────────────────────────────────────────
+  // ── Pulse animation on status dot ─────────────────────────────────────────────
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -142,129 +147,186 @@ export function BackupSyncSheet({ onClose }: Props) {
     );
     loop.start();
     return () => loop.stop();
-  }, []);
+  }, [pulseAnim]);
 
-  // ── Export full JSON backup (File or Text) ──────────────────────────────────
-  const getFullBackupData = () => ({
-    version: '1.0.0',
-    timestamp: new Date().toISOString(),
-    accounts: useAccountStore.getState().accounts,
-    transactions: useTransactionStore.getState().transactions,
-    categories: useCategoryStore.getState().categories,
-    payments: usePlannedPaymentsStore.getState().payments,
-    budgets: useBudgetStore.getState().budgets,
-    loans: useLoansStore.getState().loans,
-    ledger: useLedgerStore.getState().entries,
-    preferences: {
-      hapticLevel: usePreferencesStore.getState().hapticLevel,
-      notifPrefs: usePreferencesStore.getState().notifPrefs,
-    },
-  });
+  // ── Real Backup Execution ─────────────────────────────────────────────────────
+  const handleBackupNow = async () => {
+    if (syncState !== 'idle') return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-  const handleExportBackupFile = async () => {
+    setSyncState('reading');
+    Animated.timing(progressAnim, { toValue: 0.35, duration: 300, useNativeDriver: false }).start();
+
+    try {
+      await new Promise((r) => setTimeout(r, 450));
+      setSyncState('saving');
+      Animated.timing(progressAnim, { toValue: 0.8, duration: 350, useNativeDriver: false }).start();
+
+      // Physical atomic file creation
+      const snapshot = await createLocalBackup({ notify: true });
+
+      setSyncState('done');
+      Animated.timing(progressAnim, { toValue: 1, duration: 250, useNativeDriver: false }).start();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      toast.success(`Backup created: ${snapshot.recordCount} records saved!`);
+
+      // Refresh snapshot list
+      await refreshSnapshots();
+
+      setTimeout(() => {
+        setSyncState('idle');
+        progressAnim.setValue(0);
+      }, 1000);
+    } catch (err: any) {
+      setSyncState('idle');
+      progressAnim.setValue(0);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      toast.error(`Backup failed: ${err.message || 'Storage error'}`);
+    }
+  };
+
+  // ── 1-Tap Snapshot Restore ────────────────────────────────────────────────────
+  const handleRestoreSnapshot = (snapshot: BackupSnapshot) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    Alert.alert(
+      'Restore Local Snapshot?',
+      `This will overwrite current data with the backup from ${snapshot.formattedDate} (${snapshot.recordCount} records).\n\nAre you sure you want to proceed?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore Data',
+          style: 'destructive',
+          onPress: async () => {
+            setActiveActionFile(snapshot.fileName);
+            try {
+              const res = await restoreFromFileUri(snapshot.uri);
+              if (res.success) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                toast.success(`Restored ${res.restoredRecords} records from snapshot!`);
+                onClose();
+              } else {
+                toast.error(res.error || 'Failed to restore snapshot');
+              }
+            } catch (err: any) {
+              toast.error(`Restore error: ${err.message || 'unknown'}`);
+            } finally {
+              setActiveActionFile(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ── 1-Tap Snapshot Share / Save to External Storage ───────────────────────────
+  const handleShareSnapshot = async (snapshot: BackupSnapshot) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActiveActionFile(snapshot.fileName);
+    try {
+      const ok = await shareOrExportSnapshot(snapshot);
+      if (ok) {
+        toast.success('Backup file exported successfully!');
+      }
+    } catch (err: any) {
+      toast.error('Failed to export snapshot');
+    } finally {
+      setActiveActionFile(null);
+    }
+  };
+
+  // ── 1-Tap Snapshot Delete ─────────────────────────────────────────────────────
+  const handleDeleteSnapshot = (snapshot: BackupSnapshot) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(
+      'Delete Backup Snapshot?',
+      `Are you sure you want to remove the snapshot from ${snapshot.formattedDate}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteLocalBackup(snapshot.fileName);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            toast.info('Snapshot deleted');
+            refreshSnapshots();
+          },
+        },
+      ]
+    );
+  };
+
+  // ── Pick .json File From Native Device Storage ────────────────────────────────
+  const handlePickAndRestoreFile = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      const backupData = getFullBackupData();
-      const jsonStr = JSON.stringify(backupData, null, 2);
-      const fileName = getExportFileName('wherecash_backup', 'json');
-
-      const res = await saveFileToDevice({
-        fileName,
-        extension: 'json',
-        mimeType: 'application/json',
-        content: jsonStr,
-      });
+      const res = await restoreFromDocumentPicker();
+      if (res.canceled) return;
 
       if (res.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        toast.success(`Backup file saved: ${res.fileName ?? fileName}`);
-      } else if (!res.canceled) {
-        toast.error(res.error || 'Failed to save backup file.');
+        toast.success(`Successfully restored ${res.restoredRecords} records!`);
+        refreshSnapshots();
+        onClose();
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        toast.error(res.error || 'Failed to restore selected file.');
       }
-    } catch (err) {
-      toast.error('Failed to create backup export file.');
-      console.error(err);
+    } catch (err: any) {
+      toast.error(`Picker error: ${err.message || 'unknown'}`);
     }
   };
 
-  const handleShareBackupText = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      const backupData = getFullBackupData();
-      const jsonStr = JSON.stringify(backupData, null, 2);
-      const success = await shareTextContent({
-        title: 'WhereCash Database Backup',
-        content: `WHEREKASH_BACKUP_DATA:\n${jsonStr}`,
-      });
-      if (success) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        toast.success('Backup data shared as text!');
-      }
-    } catch (err) {
-      toast.error('Failed to share backup data.');
-      console.error(err);
-    }
-  };
-
-  // ── Restore state from pasted JSON string ─────────────────────────────────────
-  const handleRestoreBackup = () => {
+  // ── Restore From Pasted JSON String Fallback ──────────────────────────────────
+  const handleRestoreFromText = () => {
     if (!restorePayload.trim()) {
       toast.error('Please paste a backup JSON payload first');
       return;
     }
 
     try {
-      let cleanString = restorePayload.trim();
+      let clean = restorePayload.trim();
       const prefix = 'WHEREKASH_BACKUP_DATA:\n';
-      if (cleanString.startsWith(prefix)) {
-        cleanString = cleanString.slice(prefix.length);
+      if (clean.startsWith(prefix)) {
+        clean = clean.slice(prefix.length);
       }
+      const parsed = JSON.parse(clean);
 
-      const backup = JSON.parse(cleanString);
-
-      if (
-        !backup.accounts ||
-        !backup.transactions ||
-        !backup.categories ||
-        !backup.payments
-      ) {
-        toast.error('Invalid backup payload format. Missing core tables.');
-        return;
+      const res = restoreFromParsedPayload(parsed);
+      if (res.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        toast.success(`Restored ${res.restoredRecords} records from text!`);
+        setRestorePayload('');
+        setShowRestoreArea(false);
+        onClose();
+      } else {
+        toast.error(res.error || 'Invalid backup structure.');
       }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-
-      useAccountStore.setState({ accounts: backup.accounts });
-      useTransactionStore.setState({ transactions: backup.transactions });
-      useCategoryStore.setState({ categories: backup.categories });
-      usePlannedPaymentsStore.setState({ payments: backup.payments });
-
-      if (backup.budgets) useBudgetStore.setState({ budgets: backup.budgets });
-      if (backup.loans) useLoansStore.setState({ loans: backup.loans });
-      if (backup.ledger) useLedgerStore.setState({ entries: backup.ledger });
-
-      if (backup.preferences) {
-        usePreferencesStore.setState({
-          hapticLevel: backup.preferences.hapticLevel ?? 'medium',
-          notifPrefs: backup.preferences.notifPrefs,
-        });
-      }
-
-      toast.success('All stores restored from local backup!');
-      setShowRestoreArea(false);
-      setRestorePayload('');
-      onClose();
-    } catch (err) {
+    } catch {
       toast.error('JSON parsing failed. Ensure backup text is complete.');
-      console.error(err);
     }
   };
 
-  // ── Computed styles ───────────────────────────────────────────────────────────
-  const cardBg     = isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)';
-  const heroBg     = isDark ? 'rgba(108, 99, 255, 0.06)'  : 'rgba(108, 99, 255, 0.04)';
-  const isSyncing  = syncState !== 'idle';
-  const statusDot  = isSyncing ? '#F59E0B' : '#10B981';
+  // ── Export Full JSON To Downloads via SAF ─────────────────────────────────────
+  const handleSaveToDeviceFolder = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const snapshot = await createLocalBackup({ notify: false });
+      const ok = await shareOrExportSnapshot(snapshot);
+      if (ok) {
+        toast.success('Backup file saved to storage!');
+        refreshSnapshots();
+      }
+    } catch {
+      toast.error('Failed to export backup file.');
+    }
+  };
+
+  // ── Computed Layout Colors ────────────────────────────────────────────────────
+  const cardBg    = isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)';
+  const heroBg    = isDark ? 'rgba(108, 99, 255, 0.06)'  : 'rgba(108, 99, 255, 0.04)';
+  const isSyncing = syncState !== 'idle';
+  const statusDot = isSyncing ? '#F59E0B' : '#10B981';
 
   const progressWidth = progressAnim.interpolate({
     inputRange: [0, 1],
@@ -275,10 +337,9 @@ export function BackupSyncSheet({ onClose }: Props) {
     <ScrollView style={s.container} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          HERO: SYNC STATUS CARD  — gradient accent, progress, quick action
+          HERO: SYNC & BACKUP STATUS CARD
          ═══════════════════════════════════════════════════════════════════════ */}
       <View style={[s.heroCard, { backgroundColor: heroBg, borderColor: colors.brand.primary + '22' }]}>
-        {/* Gradient accent stripe on top */}
         <LinearGradient
           colors={['#6C63FF', '#38BDF8']}
           start={{ x: 0, y: 0 }}
@@ -296,13 +357,13 @@ export function BackupSyncSheet({ onClose }: Props) {
               ]}
             />
             <AppText variant="labelLG" color={colors.text.primary} style={{ fontWeight: '700' }}>
-              {isSyncing ? 'Syncing…' : 'All Data Synced'}
+              {isSyncing ? 'Backing Up…' : 'Database Protected'}
             </AppText>
           </View>
           <View style={[s.heroBadge, { backgroundColor: statusDot + '18' }]}>
             <Ionicons name="shield-checkmark" size={10} color={statusDot} />
             <AppText style={{ color: statusDot, fontSize: 9, fontWeight: '800', letterSpacing: 0.4 }}>
-              {isSyncing ? 'IN PROGRESS' : 'SECURE'}
+              {isSyncing ? 'IN PROGRESS' : 'LOCAL STORAGE'}
             </AppText>
           </View>
         </View>
@@ -311,15 +372,19 @@ export function BackupSyncSheet({ onClose }: Props) {
         <View style={s.heroMeta}>
           <View style={s.heroMetaItem}>
             <Ionicons name="time-outline" size={12} color={colors.text.tertiary} />
-            <AppText variant="caption" color={colors.text.tertiary}>Last Sync: {lastSynced}</AppText>
+            <AppText variant="caption" color={colors.text.tertiary}>
+              Last: {lastBackupTime ? formatBackupDate(lastBackupTime) : 'Never'}
+            </AppText>
           </View>
           <View style={s.heroMetaItem}>
             <Ionicons name="server-outline" size={12} color={colors.text.tertiary} />
-            <AppText variant="caption" color={colors.text.tertiary}>{totalRecords} Records</AppText>
+            <AppText variant="caption" color={colors.text.tertiary}>
+              {totalRecords} Active Records
+            </AppText>
           </View>
         </View>
 
-        {/* Progress bar (visible during sync) */}
+        {/* Progress bar */}
         {isSyncing && (
           <View style={s.progressTrack}>
             <Animated.View style={[s.progressFill, { width: progressWidth }]}>
@@ -336,9 +401,9 @@ export function BackupSyncSheet({ onClose }: Props) {
           </View>
         )}
 
-        {/* Sync CTA button */}
+        {/* Primary CTA */}
         <Pressable
-          onPress={handleSyncNow}
+          onPress={handleBackupNow}
           disabled={isSyncing}
           style={({ pressed }) => [
             s.syncBtn,
@@ -351,32 +416,187 @@ export function BackupSyncSheet({ onClose }: Props) {
           {isSyncing ? (
             <ActivityIndicator size="small" color={colors.brand.primary} />
           ) : (
-            <Ionicons name="cloud-upload-outline" size={16} color={colors.white} />
+            <Ionicons name="save-outline" size={16} color={colors.white} />
           )}
           <AppText style={[s.syncBtnText, { color: isSyncing ? colors.text.secondary : colors.white }]}>
-            {isSyncing ? SYNC_STEPS[syncState].label : 'Sync Database Now'}
+            {isSyncing ? SYNC_STEPS[syncState].label : 'Backup Database Now'}
           </AppText>
         </Pressable>
       </View>
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          SECTION: AUTO-SYNC TOGGLE
+          SECTION: AUTO-BACKUP TOGGLE & FREQUENCY
          ═══════════════════════════════════════════════════════════════════════ */}
       <View style={[s.toggleCard, { backgroundColor: cardBg, borderColor: colors.glass.border }]}>
-        <View style={[s.toggleIcon, { backgroundColor: colors.brand.primary + '14' }]}>
-          <Ionicons name="sync-outline" size={18} color={colors.brand.primary} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing['3'] }}>
+          <View style={[s.toggleIcon, { backgroundColor: colors.brand.primary + '14' }]}>
+            <Ionicons name="sync-outline" size={18} color={colors.brand.primary} />
+          </View>
+          <View style={{ flex: 1, gap: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <AppText variant="labelLG" color={colors.text.primary}>Automatic Backup</AppText>
+              <View style={[s.activePill, { backgroundColor: autoBackupEnabled ? colors.status.income + '18' : colors.glass.backgroundMid }]}>
+                <AppText style={{ fontSize: 9, fontWeight: '800', color: autoBackupEnabled ? colors.status.income : colors.text.tertiary }}>
+                  {autoBackupEnabled ? 'ACTIVE' : 'PAUSED'}
+                </AppText>
+              </View>
+            </View>
+            <AppText variant="caption" color={colors.text.tertiary}>
+              Saves database snapshots automatically
+            </AppText>
+          </View>
+          <Switch
+            value={autoBackupEnabled}
+            onValueChange={(v) => {
+              Haptics.selectionAsync();
+              setAutoBackupEnabled(v);
+              toast.info(v ? 'Auto-backup enabled' : 'Auto-backup disabled');
+            }}
+            trackColor={{ false: colors.glass.backgroundMid, true: colors.brand.primary }}
+            thumbColor={colors.white}
+            ios_backgroundColor={colors.glass.backgroundMid}
+          />
         </View>
-        <View style={{ flex: 1, gap: 1 }}>
-          <AppText variant="labelLG" color={colors.text.primary}>Auto-Background Sync</AppText>
-          <AppText variant="caption" color={colors.text.tertiary}>Sync changes silently when data updates</AppText>
+
+        {/* Frequency pills when auto-backup is active */}
+        {autoBackupEnabled && (
+          <View style={s.freqContainer}>
+            <AppText variant="caption" color={colors.text.tertiary} style={{ marginBottom: 4 }}>
+              Schedule:
+            </AppText>
+            <View style={s.freqRow}>
+              {FREQUENCIES.map((freq) => {
+                const isSelected = autoBackupFrequency === freq.id;
+                return (
+                  <Pressable
+                    key={freq.id}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setAutoBackupFrequency(freq.id);
+                    }}
+                    style={[
+                      s.freqPill,
+                      {
+                        backgroundColor: isSelected ? colors.brand.primary : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'),
+                        borderColor: isSelected ? colors.brand.primary : colors.glass.border,
+                      },
+                    ]}
+                  >
+                    <AppText
+                      style={{
+                        fontSize: 11,
+                        fontWeight: isSelected ? '700' : '500',
+                        color: isSelected ? colors.white : colors.text.secondary,
+                      }}
+                    >
+                      {freq.label}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          SECTION: SAVED LOCAL SNAPSHOTS (USER FAVORITE FEATURE)
+         ═══════════════════════════════════════════════════════════════════════ */}
+      <View style={s.section}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 4 }}>
+          <AppText variant="labelSM" color={colors.text.tertiary} style={s.sectionTitle}>
+            LOCAL SNAPSHOTS (TOP {MAX_RETAINED_SNAPSHOTS})
+          </AppText>
+          <Pressable onPress={refreshSnapshots} hitSlop={10}>
+            <Ionicons name="refresh-outline" size={13} color={colors.text.tertiary} />
+          </Pressable>
         </View>
-        <Switch
-          value={autoSync}
-          onValueChange={setAutoSync}
-          trackColor={{ false: colors.glass.backgroundMid, true: colors.brand.primary }}
-          thumbColor={colors.white}
-          ios_backgroundColor={colors.glass.backgroundMid}
-        />
+
+        {snapshots.length === 0 ? (
+          <View style={[s.emptySnapshotsCard, { backgroundColor: cardBg, borderColor: colors.glass.border }]}>
+            <Ionicons name="file-tray-outline" size={24} color={colors.text.tertiary} />
+            <AppText variant="bodySM" color={colors.text.secondary} align="center">
+              No saved snapshots found yet
+            </AppText>
+            <AppText variant="caption" color={colors.text.tertiary} align="center">
+              Tap "Backup Database Now" above to generate your first physical snapshot.
+            </AppText>
+          </View>
+        ) : (
+          snapshots.map((snap, idx) => (
+            <View
+              key={snap.fileName}
+              style={[
+                s.snapshotCard,
+                {
+                  backgroundColor: cardBg,
+                  borderColor: idx === 0 ? colors.brand.primary + '30' : colors.glass.border,
+                },
+              ]}
+            >
+              <View style={s.snapshotTop}>
+                <View style={[s.snapIconCircle, { backgroundColor: colors.brand.primary + '15' }]}>
+                  <Ionicons name="document-text-outline" size={16} color={colors.brand.primary} />
+                </View>
+                <View style={{ flex: 1, gap: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <AppText style={{ fontSize: 13, fontWeight: '700', color: colors.text.primary }} numberOfLines={1}>
+                      {snap.formattedDate}
+                    </AppText>
+                    {idx === 0 && (
+                      <View style={[s.latestBadge, { backgroundColor: colors.status.income + '18' }]}>
+                        <AppText style={{ fontSize: 8, fontWeight: '800', color: colors.status.income }}>LATEST</AppText>
+                      </View>
+                    )}
+                  </View>
+                  <AppText variant="caption" color={colors.text.tertiary}>
+                    {snap.recordCount} records · {snap.sizeFormatted} · v{snap.version}
+                  </AppText>
+                </View>
+              </View>
+
+              {/* Quick Action Buttons */}
+              <View style={[s.snapshotActionsRow, { borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}>
+                <Pressable
+                  onPress={() => handleRestoreSnapshot(snap)}
+                  disabled={activeActionFile === snap.fileName}
+                  style={({ pressed }) => [s.snapBtn, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Ionicons name="refresh-circle-outline" size={14} color={colors.status.income} />
+                  <AppText style={{ fontSize: 11, fontWeight: '700', color: colors.status.income }}>
+                    Restore
+                  </AppText>
+                </Pressable>
+
+                <View style={[s.snapActionDivider, { backgroundColor: colors.glass.border }]} />
+
+                <Pressable
+                  onPress={() => handleShareSnapshot(snap)}
+                  disabled={activeActionFile === snap.fileName}
+                  style={({ pressed }) => [s.snapBtn, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Ionicons name="share-outline" size={13} color={colors.brand.primary} />
+                  <AppText style={{ fontSize: 11, fontWeight: '600', color: colors.brand.primary }}>
+                    Share / Save
+                  </AppText>
+                </Pressable>
+
+                <View style={[s.snapActionDivider, { backgroundColor: colors.glass.border }]} />
+
+                <Pressable
+                  onPress={() => handleDeleteSnapshot(snap)}
+                  disabled={activeActionFile === snap.fileName}
+                  style={({ pressed }) => [s.snapBtn, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Ionicons name="trash-outline" size={13} color={colors.status.expense} />
+                  <AppText style={{ fontSize: 11, fontWeight: '600', color: colors.status.expense }}>
+                    Delete
+                  </AppText>
+                </Pressable>
+              </View>
+            </View>
+          ))
+        )}
       </View>
 
       {/* ═══════════════════════════════════════════════════════════════════════
@@ -384,18 +604,17 @@ export function BackupSyncSheet({ onClose }: Props) {
          ═══════════════════════════════════════════════════════════════════════ */}
       <View style={s.section}>
         <AppText variant="labelSM" color={colors.text.tertiary} style={s.sectionTitle}>
-          LOCAL DATABASE
+          ACTIVE DATABASE TOTALS
         </AppText>
         <View style={s.statsGrid}>
           {STATS.map((stat, i) => (
             <View key={stat.label} style={[s.statCard, { backgroundColor: cardBg, borderColor: colors.glass.border }]}>
-              {/* Colored accent bar on left */}
               <View style={[s.statAccent, { backgroundColor: STAT_COLORS[i] }]} />
               <View style={s.statContent}>
                 <View style={[s.statIconWrap, { backgroundColor: STAT_COLORS[i] + '14' }]}>
                   <Ionicons name={stat.icon} size={14} color={STAT_COLORS[i]} />
                 </View>
-                <AppText variant="headingMD" color={colors.text.primary} style={{ fontWeight: '800', fontSize: 18 }}>
+                <AppText variant="headingMD" color={colors.text.primary} style={{ fontWeight: '800', fontSize: 17 }}>
                   {stat.count}
                 </AppText>
                 <AppText variant="caption" color={colors.text.tertiary} style={{ fontSize: 10 }}>
@@ -408,16 +627,16 @@ export function BackupSyncSheet({ onClose }: Props) {
       </View>
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          SECTION: MANUAL EXPORT / RESTORE
+          SECTION: RESTORE & EXTERNAL EXPORT
          ═══════════════════════════════════════════════════════════════════════ */}
       <View style={s.section}>
         <AppText variant="labelSM" color={colors.text.tertiary} style={s.sectionTitle}>
-          MANUAL BACKUP
+          EXTERNAL BACKUP & RESTORE
         </AppText>
 
-        {/* 1. Priority: Save Backup File */}
+        {/* 1. Direct File Picker Restore */}
         <Pressable
-          onPress={handleExportBackupFile}
+          onPress={handlePickAndRestoreFile}
           style={({ pressed }) => [
             s.actionCard,
             {
@@ -432,29 +651,29 @@ export function BackupSyncSheet({ onClose }: Props) {
             colors={['#10B981', '#06B6D4']}
             style={s.actionIconCircle}
           >
-            <Ionicons name="download-outline" size={16} color="#FFF" />
+            <Ionicons name="folder-open-outline" size={16} color="#FFF" />
           </LinearGradient>
           <View style={{ flex: 1, gap: 2 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <AppText variant="labelLG" color={colors.text.primary} style={{ fontWeight: '700' }}>
-                Save Backup File (.json)
+                Restore from .json File
               </AppText>
               <View style={[s.priorityBadge, { backgroundColor: colors.status.income + '20' }]}>
                 <AppText style={{ color: colors.status.income, fontSize: 9, fontWeight: '800' }}>
-                  PRIORITY
+                  1-TAP PICK
                 </AppText>
               </View>
             </View>
             <AppText variant="caption" color={colors.text.tertiary}>
-              Pick folder & save physical .json backup to device storage
+              Browse phone storage & restore any WhereCash backup
             </AppText>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
         </Pressable>
 
-        {/* 2. Secondary: Share Backup as Text */}
+        {/* 2. Export Backup to Device Storage */}
         <Pressable
-          onPress={handleShareBackupText}
+          onPress={handleSaveToDeviceFolder}
           style={({ pressed }) => [
             s.actionCard,
             {
@@ -465,18 +684,18 @@ export function BackupSyncSheet({ onClose }: Props) {
           ]}
         >
           <View style={[s.actionIconCircle, { backgroundColor: colors.brand.primary + '18' }]}>
-            <Ionicons name="share-social-outline" size={16} color={colors.brand.primary} />
+            <Ionicons name="download-outline" size={16} color={colors.brand.primary} />
           </View>
           <View style={{ flex: 1, gap: 2 }}>
-            <AppText variant="labelLG" color={colors.text.primary}>Share Backup as Text</AppText>
+            <AppText variant="labelLG" color={colors.text.primary}>Save Copy to Downloads</AppText>
             <AppText variant="caption" color={colors.text.tertiary}>
-              Copy or send full JSON payload to WhatsApp, Notes or cloud
+              Save standalone copy to phone Downloads/Drive
             </AppText>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
         </Pressable>
 
-        {/* Restore button */}
+        {/* 3. Fallback: Paste Backup Text */}
         <Pressable
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -495,12 +714,12 @@ export function BackupSyncSheet({ onClose }: Props) {
             colors={['#F59E0B', '#FB923C']}
             style={s.actionIconCircle}
           >
-            <Ionicons name="cloud-upload-outline" size={16} color="#FFF" />
+            <Ionicons name="code-slash-outline" size={16} color="#FFF" />
           </LinearGradient>
           <View style={{ flex: 1, gap: 2 }}>
-            <AppText variant="labelLG" color={colors.text.primary}>Restore from Backup</AppText>
+            <AppText variant="labelLG" color={colors.text.primary}>Paste Backup Text</AppText>
             <AppText variant="caption" color={colors.text.tertiary}>
-              Overwrite local data with a backup JSON file
+              Manual JSON text paste fallback
             </AppText>
           </View>
           <Ionicons
@@ -510,19 +729,18 @@ export function BackupSyncSheet({ onClose }: Props) {
           />
         </Pressable>
 
-        {/* ── Restore Expansion Panel ─────────────────────────────────────────── */}
+        {/* Restore Expansion Panel */}
         {showRestoreArea && (
           <View style={[s.restorePanel, { borderColor: colors.status.warning + '30', backgroundColor: colors.status.warning + '04' }]}>
-            {/* Warning banner */}
             <View style={[s.warningBanner, { backgroundColor: colors.status.warning + '12' }]}>
               <Ionicons name="alert-circle" size={14} color={colors.status.warning} />
               <AppText style={{ fontSize: 10.5, fontWeight: '700', color: colors.status.warning, letterSpacing: 0.3, flex: 1 }}>
-                THIS WILL PERMANENTLY OVERWRITE ALL LOCAL DATA
+                THIS WILL OVERWRITE CURRENT LOCAL DATABASE
               </AppText>
             </View>
 
             <AppText variant="caption" color={colors.text.secondary} style={{ lineHeight: 16 }}>
-              Paste the complete backup JSON text below. All accounts, categories, budgets and transaction records will be replaced.
+              Paste your raw JSON text below. All accounts, categories, budgets and transactions will be overwritten.
             </AppText>
 
             <TextInput
@@ -530,7 +748,7 @@ export function BackupSyncSheet({ onClose }: Props) {
               numberOfLines={6}
               value={restorePayload}
               onChangeText={setRestorePayload}
-              placeholder={'{\n  "version": "1.0.0",\n  "accounts": [...],\n  ...\n}'}
+              placeholder={'{\n  "version": "1.1.0",\n  "accounts": [...],\n  ...\n}'}
               placeholderTextColor={colors.text.tertiary + '60'}
               style={[
                 s.restoreInput,
@@ -545,7 +763,7 @@ export function BackupSyncSheet({ onClose }: Props) {
             />
 
             <Pressable
-              onPress={handleRestoreBackup}
+              onPress={handleRestoreFromText}
               style={({ pressed }) => [
                 s.restoreBtn,
                 {
@@ -562,14 +780,13 @@ export function BackupSyncSheet({ onClose }: Props) {
       </View>
 
       {/* Bottom spacer */}
-      <View style={{ height: Spacing['4'] }} />
+      <View style={{ height: Spacing['6'] }} />
     </ScrollView>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════════
-   STYLES
-   ═══════════════════════════════════════════════════════════════════════════════ */
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const s = StyleSheet.create({
   container: {
     flexShrink: 1,
@@ -581,7 +798,7 @@ const s = StyleSheet.create({
     gap: Spacing['4'],
   },
 
-  /* ── Hero card ─────────────────────────────────────────────────────────────── */
+  /* ── Hero Card ─────────────────────────────────────────────────────────────── */
   heroCard: {
     borderRadius: Radius.xl,
     borderWidth: 1,
@@ -631,7 +848,7 @@ const s = StyleSheet.create({
     gap: 4,
   },
 
-  /* ── Progress bar ──────────────────────────────────────────────────────────── */
+  /* ── Progress Bar ──────────────────────────────────────────────────────────── */
   progressTrack: {
     height: 6,
     borderRadius: 3,
@@ -650,7 +867,7 @@ const s = StyleSheet.create({
     fontSize: 9,
   },
 
-  /* ── Sync button ───────────────────────────────────────────────────────────── */
+  /* ── Sync CTA ──────────────────────────────────────────────────────────────── */
   syncBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -661,14 +878,12 @@ const s = StyleSheet.create({
     gap: Spacing['2'],
   },
   syncBtnText: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '700',
   },
 
-  /* ── Toggle card ───────────────────────────────────────────────────────────── */
+  /* ── Toggle Card ───────────────────────────────────────────────────────────── */
   toggleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: Spacing['4'],
     borderRadius: Radius.xl,
     borderWidth: 1,
@@ -681,8 +896,30 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  activePill: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: Radius.xs,
+  },
+  freqContainer: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(128,128,128,0.12)',
+    paddingTop: Spacing['3'],
+  },
+  freqRow: {
+    flexDirection: 'row',
+    gap: Spacing['2'],
+  },
+  freqPill: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+  },
 
-  /* ── Section ───────────────────────────────────────────────────────────────── */
+  /* ── Section Header ────────────────────────────────────────────────────────── */
   section: {
     gap: Spacing['2'],
   },
@@ -693,7 +930,60 @@ const s = StyleSheet.create({
     paddingLeft: 4,
   },
 
-  /* ── Stats grid ────────────────────────────────────────────────────────────── */
+  /* ── Local Snapshots ───────────────────────────────────────────────────────── */
+  emptySnapshotsCard: {
+    padding: Spacing['5'],
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  snapshotCard: {
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginBottom: Spacing['2'],
+  },
+  snapshotTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing['3'],
+    gap: Spacing['3'],
+  },
+  snapIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  latestBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: Radius.xs,
+  },
+  snapshotActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    paddingVertical: 7,
+    paddingHorizontal: Spacing['2'],
+  },
+  snapBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  snapActionDivider: {
+    width: 1,
+    height: 14,
+  },
+
+  /* ── Stats Grid ────────────────────────────────────────────────────────────── */
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -724,7 +1014,7 @@ const s = StyleSheet.create({
     marginBottom: 2,
   },
 
-  /* ── Action cards ──────────────────────────────────────────────────────────── */
+  /* ── Action Cards ──────────────────────────────────────────────────────────── */
   actionCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -741,7 +1031,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  /* ── Restore panel ─────────────────────────────────────────────────────────── */
+  /* ── Restore Panel ─────────────────────────────────────────────────────────── */
   restorePanel: {
     padding: Spacing['4'],
     borderRadius: Radius.xl,

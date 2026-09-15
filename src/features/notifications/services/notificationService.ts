@@ -147,3 +147,18 @@ export async function cancelScheduledReminder(expoId: string): Promise<void> {
   const ids = expoId.split('|').filter(Boolean);
   await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id)));
 }
+
+export async function sendInstantNotification(title: string, body: string): Promise<void> {
+  const Notifications = await N();
+  if (!Notifications) return;
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title,
+      body,
+      sound: true,
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+    },
+    trigger: null,
+  });
+}
+

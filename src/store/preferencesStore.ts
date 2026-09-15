@@ -34,6 +34,9 @@ interface PreferencesState {
   notifPrefs: NotifPrefs;
   storagePermissionGranted: boolean;
   hideBalance: boolean;
+  autoBackupEnabled: boolean;
+  autoBackupFrequency: 'daily' | 'weekly' | 'on_change';
+  lastBackupTime: string | null;
   setHapticLevel: (level: HapticLevel) => void;
   setHapticsEnabledOnboarding: (enabled: boolean) => void;
   setHapticsEnabledButtonTaps: (enabled: boolean) => void;
@@ -41,6 +44,9 @@ interface PreferencesState {
   setNotifPrefs: (prefs: Partial<NotifPrefs>) => void;
   setStoragePermissionGranted: (granted: boolean) => void;
   toggleHideBalance: () => void;
+  setAutoBackupEnabled: (enabled: boolean) => void;
+  setAutoBackupFrequency: (freq: 'daily' | 'weekly' | 'on_change') => void;
+  setLastBackupTime: (time: string | null) => void;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -53,6 +59,9 @@ export const usePreferencesStore = create<PreferencesState>()(
       notifPrefs: DEFAULT_NOTIF_PREFS,
       storagePermissionGranted: false,
       hideBalance: false,
+      autoBackupEnabled: true,
+      autoBackupFrequency: 'daily',
+      lastBackupTime: null,
 
       setHapticLevel: (hapticLevel) => set({ hapticLevel }),
       setHapticsEnabledOnboarding: (hapticsEnabledOnboarding) => set({ hapticsEnabledOnboarding }),
@@ -61,6 +70,9 @@ export const usePreferencesStore = create<PreferencesState>()(
       setNotifPrefs: (prefs) => set((state) => ({ notifPrefs: { ...state.notifPrefs, ...prefs } })),
       setStoragePermissionGranted: (storagePermissionGranted) => set({ storagePermissionGranted }),
       toggleHideBalance: () => set((state) => ({ hideBalance: !state.hideBalance })),
+      setAutoBackupEnabled: (autoBackupEnabled) => set({ autoBackupEnabled }),
+      setAutoBackupFrequency: (autoBackupFrequency) => set({ autoBackupFrequency }),
+      setLastBackupTime: (lastBackupTime) => set({ lastBackupTime }),
     }),
     {
       name: 'wc-preferences',
