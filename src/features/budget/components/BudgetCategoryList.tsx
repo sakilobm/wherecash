@@ -21,7 +21,7 @@ interface CategoryCardProps {
 }
 
 const CategoryCard = memo(function CategoryCard({ item, onDeleteLimit, onSetLimit }: CategoryCardProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { symbol } = useFormatCurrency();
 
   const pct = item.hasLimit ? item.percent / 100 : 0;
@@ -87,9 +87,27 @@ const CategoryCard = memo(function CategoryCard({ item, onDeleteLimit, onSetLimi
             </AppText>
           </View>
         ) : (
-          <View style={[styles.inlineSetBtn, { backgroundColor: colors.brand.primary + '18' }]}>
-            <Ionicons name="add" size={10} color={colors.brand.primary} />
-            <AppText variant="caption" style={[styles.inlineSetBtnText, { color: colors.brand.primary }]}>
+          <View
+            style={[
+              styles.inlineSetBtn,
+              {
+                backgroundColor: isDark ? (colors.brand.primary + '22') : (colors.brand.primary + '12'),
+                borderColor: isDark ? (colors.brand.primary + '45') : (colors.brand.primary + '28'),
+              },
+            ]}
+          >
+            <Ionicons
+              name="add"
+              size={11}
+              color={isDark ? (colors.text.brand || '#A78BFA') : colors.brand.primary}
+            />
+            <AppText
+              variant="caption"
+              style={[
+                styles.inlineSetBtnText,
+                { color: isDark ? (colors.text.brand || '#A78BFA') : colors.brand.primary },
+              ]}
+            >
               Set
             </AppText>
           </View>
@@ -155,7 +173,7 @@ const CategoryCard = memo(function CategoryCard({ item, onDeleteLimit, onSetLimi
 
 // ─── Single Category Capsule Row Component (Memoized) ─────────────────────────
 const CategoryCapsule = memo(function CategoryCapsule({ item, onDeleteLimit, onSetLimit }: CategoryCardProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { symbol } = useFormatCurrency();
 
   const pct = item.hasLimit ? item.percent / 100 : 0;
@@ -279,9 +297,27 @@ const CategoryCapsule = memo(function CategoryCapsule({ item, onDeleteLimit, onS
               <Ionicons name="chevron-forward" size={14} color={colors.text.tertiary} />
             </View>
           ) : (
-            <View style={[styles.inlineSetBtn, { backgroundColor: colors.brand.primary + '18' }]}>
-              <Ionicons name="add" size={11} color={colors.brand.primary} />
-              <AppText variant="caption" style={[styles.inlineSetBtnText, { color: colors.brand.primary }]}>
+            <View
+              style={[
+                styles.inlineSetBtn,
+                {
+                  backgroundColor: isDark ? (colors.brand.primary + '22') : (colors.brand.primary + '12'),
+                  borderColor: isDark ? (colors.brand.primary + '45') : (colors.brand.primary + '28'),
+                },
+              ]}
+            >
+              <Ionicons
+                name="add"
+                size={11}
+                color={isDark ? (colors.text.brand || '#A78BFA') : colors.brand.primary}
+              />
+              <AppText
+                variant="caption"
+                style={[
+                  styles.inlineSetBtnText,
+                  { color: isDark ? (colors.text.brand || '#A78BFA') : colors.brand.primary },
+                ]}
+              >
                 Set Limit
               </AppText>
             </View>
@@ -485,14 +521,15 @@ const styles = StyleSheet.create({
   inlineSetBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 1.5,
-    paddingHorizontal: 7,
+    gap: 2.5,
+    paddingHorizontal: 8,
     paddingVertical: 3.5,
-    borderRadius: 10,
+    borderRadius: Radius.full,
+    borderWidth: 1,
   },
   inlineSetBtnText: {
-    fontSize: 8.5,
-    fontWeight: '800',
+    fontSize: 9.5,
+    fontWeight: '700',
     letterSpacing: 0.2,
   },
 

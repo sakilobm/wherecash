@@ -153,13 +153,23 @@ export const BudgetOverviewHero = memo(function BudgetOverviewHero({
           style={({ pressed }) => [
             s.editBtn,
             {
-              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
-              opacity: pressed ? 0.7 : 1,
+              backgroundColor: isDark ? (colors.brand.primary + '22') : (colors.brand.primary + '12'),
+              borderColor: isDark ? (colors.brand.primary + '45') : (colors.brand.primary + '28'),
+              opacity: pressed ? 0.75 : 1,
             },
           ]}
         >
-          <Ionicons name="options-outline" size={13} color={colors.brand.primary} />
-          <AppText style={[s.editBtnText, { color: colors.brand.primary }]}>
+          <Ionicons
+            name="options-outline"
+            size={13}
+            color={isDark ? (colors.text.brand || '#A78BFA') : colors.brand.primary}
+          />
+          <AppText
+            style={[
+              s.editBtnText,
+              { color: isDark ? (colors.text.brand || '#A78BFA') : colors.brand.primary },
+            ]}
+          >
             Set Limit
           </AppText>
         </Pressable>
@@ -240,13 +250,15 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 5,
     borderRadius: Radius.full,
+    borderWidth: 1,
   },
   editBtnText: {
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: '700',
     includeFontPadding: false,
+    letterSpacing: 0.2,
   },
 });
