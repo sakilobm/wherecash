@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, memo, useMemo } from 'react';
+import React, { useCallback, memo } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,11 +9,14 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  withTiming,
+  runOnJS,
 } from 'react-native-reanimated';
 import {
   GestureDetector,
   Gesture,
 } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppText } from '@components/AppText';
@@ -111,7 +114,11 @@ const StatusChip = memo(function StatusChip({ status }: { status: LedgerEntry['s
 
 // ─── Card ────────────────────────────────────────────────────────────────────
 
-const SWIPE_THRESHOLD = -80;
+// ─── Gesture Thresholds (Identical to Budget) ──────────────────────────────────
+const SWIPE_SETTLE_THRESHOLD = 80;
+const TX_DELETE_W = 84;
+const TX_SNAP_AT = TX_DELETE_W * 0.55;
+const TX_AUTO_DELETE = 175;
 
 interface PersonLedgerCardProps {
   entry: LedgerEntry;
@@ -130,42 +137,93 @@ export const PersonLedgerCard = memo(function PersonLedgerCard({
   const { symbol } = useFormatCurrency();
   const account = useAccountStore((s) => s.accounts.find((a) => a.id === entry.accountId));
 
+  const isSettled = entry.status === 'SETTLED';
+
+  // Reanimated Shared Values
   const translateX = useSharedValue(0);
-  const swipedRef = useRef(false);
+  const rowOpacity = useSharedValue(1);
+  const pressScale = useSharedValue(1);
 
-  const handleSettle = useCallback(() => onSettle(entry.id), [entry.id, onSettle]);
-  const handleDelete = useCallback(() => onDelete(entry.id), [entry.id, onDelete]);
+  // Settle action with smooth animation (Swipe Right)
+  const handleSettleAction = useCallback(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    translateX.value = withTiming(240, { duration: 200 });
+    rowOpacity.value = withTiming(0, { duration: 220 });
+    setTimeout(() => {
+      onSettle(entry.id);
+    }, 220);
+  }, [entry.id, onSettle, translateX, rowOpacity]);
 
-  const panGesture = useMemo(() => {
-    return Gesture.Pan()
-      .runOnJS(true)
-      .activeOffsetX([-12, 12000])
-      .failOffsetY([-10, 10])
-      .onBegin(() => {
-        swipedRef.current = false;
-      })
-      .onUpdate((e) => {
-        if (e.translationX < -6) swipedRef.current = true;
+  // Delete action with smooth animation (Swipe Left)
+  const handleDeleteAction = useCallback(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    translateX.value = withTiming(-400, { duration: 220 });
+    rowOpacity.value = withTiming(0, { duration: 200 });
+    setTimeout(() => {
+      onDelete(entry.id);
+    }, 220);
+  }, [entry.id, onDelete, translateX, rowOpacity]);
+
+  // UI-Thread Native Pan Gesture (Identical to Budget)
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-12, 12])
+    .failOffsetY([-8, 8])
+    .onUpdate((e) => {
+      'worklet';
+      if (isSettled) {
+        // Settled entries only allow swipe-left to delete
         if (e.translationX < 0) {
-          translateX.value = Math.max(e.translationX, -140);
-        } else {
-          translateX.value = Math.min(e.translationX * 0.15, 5);
+          translateX.value = Math.max(e.translationX, -(TX_DELETE_W + 16));
         }
-      })
-      .onEnd((e) => {
-        if (e.translationX < SWIPE_THRESHOLD) {
-          translateX.value = withSpring(-120, { damping: 20, stiffness: 180 });
-        } else {
-          translateX.value = withSpring(0, { damping: 20, stiffness: 250 });
-          setTimeout(() => {
-            swipedRef.current = false;
-          }, 150);
-        }
-      });
-  }, [translateX]);
+        return;
+      }
 
-  const cardStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+      if (e.translationX > 0) {
+        // Swipe Right -> Settle
+        translateX.value = Math.min(e.translationX, 130);
+      } else {
+        // Swipe Left -> Delete
+        translateX.value = Math.max(e.translationX, -(TX_DELETE_W + 16));
+      }
+    })
+    .onEnd((e) => {
+      'worklet';
+      if (e.translationX >= SWIPE_SETTLE_THRESHOLD && !isSettled) {
+        // Swiped right enough to settle
+        runOnJS(handleSettleAction)();
+      } else if (e.translationX < 0) {
+        // Delete direction
+        if (e.velocityX < -650 || e.translationX < -TX_AUTO_DELETE) {
+          // Fast flick or deep swipe -> auto delete
+          runOnJS(handleDeleteAction)();
+        } else if (e.translationX < -TX_SNAP_AT) {
+          // Snap open delete button
+          translateX.value = withSpring(-TX_DELETE_W, { damping: 20, stiffness: 220 });
+        } else {
+          translateX.value = withSpring(0, { damping: 22, stiffness: 260 });
+        }
+      } else {
+        translateX.value = withSpring(0, { damping: 22, stiffness: 260 });
+      }
+    });
+
+  const cardAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { scale: pressScale.value },
+    ],
+  }));
+
+  const wrapAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: rowOpacity.value,
+  }));
+
+  const settleUnderlayStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(Math.max(translateX.value / SWIPE_SETTLE_THRESHOLD, 0), 1),
+  }));
+
+  const deleteUnderlayStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(Math.max(-translateX.value / TX_SNAP_AT, 0), 1),
   }));
 
   const remaining = entry.totalAmount - entry.amountReturned;
@@ -191,197 +249,215 @@ export const PersonLedgerCard = memo(function PersonLedgerCard({
     ? [colors.background.secondary, colors.background.tertiary] as const
     : ['#FFFFFF', '#F8FAFC'] as const;
 
-  const handlePressCard = useCallback(() => {
-    if (swipedRef.current) {
-      translateX.value = withSpring(0, { damping: 20, stiffness: 250 });
-      setTimeout(() => {
-        swipedRef.current = false;
-      }, 150);
-    } else {
-      onPress(entry);
-    }
-  }, [entry, onPress, translateX]);
-
   return (
-    <View style={styles.swipeContainer}>
-      {/* Swipe-revealed actions */}
-      <View style={styles.actions}>
-        {entry.status !== 'SETTLED' && (
-          <Pressable
-            onPress={handleSettle}
-            style={[styles.actionBtn, { backgroundColor: colors.status.income }]}
-          >
-            <Ionicons name="checkmark" size={20} color={colors.white} />
-          </Pressable>
-        )}
-        <Pressable
-          onPress={handleDelete}
-          style={[styles.actionBtn, { backgroundColor: colors.status.expense }]}
-        >
-          <Ionicons name="trash-outline" size={18} color={colors.white} />
+    <Animated.View style={[styles.rowWrapper, wrapAnimatedStyle]}>
+      {/* ── Settle Underlay (Left to Right) ── */}
+      {!isSettled && (
+        <Animated.View style={[styles.underlaySettle, settleUnderlayStyle, { backgroundColor: colors.status.income }]}>
+          <Ionicons name="checkmark-circle" size={22} color={colors.white} />
+          <AppText variant="labelSM" style={[styles.underlayText, { color: colors.white }]}>
+            Mark Settled
+          </AppText>
+        </Animated.View>
+      )}
+
+      {/* ── Delete Underlay (Right to Left) ── */}
+      <Animated.View style={[styles.underlayDelete, deleteUnderlayStyle, { backgroundColor: colors.status.expense }]}>
+        <Pressable onPress={handleDeleteAction} style={styles.underlayDeletePressable}>
+          <Ionicons name="trash-outline" size={20} color={colors.white} />
+          <AppText variant="labelSM" style={[styles.underlayText, { color: colors.white }]}>
+            Delete
+          </AppText>
         </Pressable>
-      </View>
+      </Animated.View>
 
-      {/* Card */}
+      {/* ── Main Interactive Card ── */}
       <GestureDetector gesture={panGesture}>
-        <Animated.View
-          style={[
-            styles.card,
-            cardStyle,
-            {
-              shadowColor: glowColor,
-              shadowOpacity: entry.status !== 'SETTLED' ? (isDark ? 0.35 : 0.1) : 0,
-              shadowRadius: 14,
-              shadowOffset: { width: 0, height: 6 },
-              backgroundColor: isDark ? colors.background.secondary : colors.white,
-            },
-          ]}
+        <Pressable
+          onPressIn={() => {
+            pressScale.value = withSpring(0.985, { damping: 15 });
+          }}
+          onPressOut={() => {
+            pressScale.value = withSpring(1, { damping: 15 });
+          }}
+          onPress={() => {
+            if (translateX.value < -8) {
+              // Tap to snap back if swiped open
+              translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
+            } else {
+              onPress(entry);
+            }
+          }}
+          style={styles.pressableCard}
         >
-          {/* Inner clips container for child elements to allow overflow shadows */}
-          <View style={[styles.cardInner, { borderColor: cardBorderColor }]}>
-            {/* Custom Linear Gradient for polished visual depth */}
-            <LinearGradient
-              colors={cardGradColors}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-
-            {/* Ambient glow blob matching the status or person color */}
-            {entry.status !== 'SETTLED' && (
-              <View
-                style={[
-                  styles.cardGlowBlob,
-                  {
-                    backgroundColor: glowColor,
-                    opacity: isDark ? 0.08 : 0.04,
-                  },
-                ]}
+          <Animated.View
+            style={[
+              styles.card,
+              cardAnimatedStyle,
+              {
+                shadowColor: glowColor,
+                shadowOpacity: entry.status !== 'SETTLED' ? (isDark ? 0.35 : 0.1) : 0,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 6 },
+                backgroundColor: isDark ? colors.background.secondary : colors.white,
+              },
+            ]}
+          >
+            {/* Inner clips container for child elements to allow overflow shadows */}
+            <View style={[styles.cardInner, { borderColor: cardBorderColor }]}>
+              {/* Custom Linear Gradient for polished visual depth */}
+              <LinearGradient
+                colors={cardGradColors}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
               />
-            )}
 
-            {/* Top shine overlay to give glassmorphic texture in dark mode */}
-            {isDark && (
-              <View style={[styles.cardShine, { backgroundColor: colors.glass.shine }]} />
-            )}
-
-            <Pressable
-              onPress={handlePressCard}
-              style={styles.cardContent}
-              android_ripple={{ color: colors.glass.backgroundMid }}
-            >
-              {/* Row 1: Avatar + Name + Amount */}
-              <View style={styles.mainRow}>
-                <AvatarRing
-                  initials={entry.personInitials}
-                  color={entry.personColor}
-                  status={entry.status}
+              {/* Ambient glow blob matching the status or person color */}
+              {entry.status !== 'SETTLED' && (
+                <View
+                  style={[
+                    styles.cardGlowBlob,
+                    {
+                      backgroundColor: glowColor,
+                      opacity: isDark ? 0.08 : 0.04,
+                    },
+                  ]}
                 />
+              )}
 
-                <View style={styles.nameBlock}>
-                  <AppText
-                    variant="labelLG"
-                    color={colors.text.primary}
-                    numberOfLines={1}
-                    style={styles.name}
-                  >
-                    {entry.personName}
-                  </AppText>
+              {/* Top shine overlay to give glassmorphic texture in dark mode */}
+              {isDark && (
+                <View style={[styles.cardShine, { backgroundColor: colors.glass.shine }]} />
+              )}
 
-                  {/* Meta line: account badge + note */}
-                  <View style={styles.metaRow}>
-                    {account && (
+              <View style={styles.cardContent}>
+                {/* Row 1: Avatar + Name + Amount */}
+                <View style={styles.mainRow}>
+                  <AvatarRing
+                    initials={entry.personInitials}
+                    color={entry.personColor}
+                    status={entry.status}
+                  />
+
+                  <View style={styles.nameBlock}>
+                    <AppText
+                      variant="labelLG"
+                      color={colors.text.primary}
+                      numberOfLines={1}
+                      style={styles.name}
+                    >
+                      {entry.personName}
+                    </AppText>
+
+                    {/* Meta line: account badge + note */}
+                    <View style={styles.metaRow}>
+                      {account && (
+                        <View
+                          style={[
+                            styles.accountBadge,
+                            {
+                              backgroundColor: isDark ? account.color + '15' : account.color + '0E',
+                              borderColor: isDark ? account.color + '2C' : account.color + '18',
+                            },
+                          ]}
+                        >
+                          <Ionicons name={account.icon as any} size={9} color={account.color} />
+                          <AppText style={[styles.accountLabel, { color: account.color }]}>
+                            {account.name}
+                          </AppText>
+                        </View>
+                      )}
+                      {entry.note && (
+                        <AppText
+                          variant="caption"
+                          color={colors.text.secondary}
+                          numberOfLines={1}
+                          style={styles.note}
+                        >
+                          {entry.note}
+                        </AppText>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Right: Amount + Status */}
+                  <View style={styles.amountBlock}>
+                    <AppText
+                      style={[styles.amount, { color: dirColor }]}
+                      numberOfLines={1}
+                    >
+                      {entry.direction === 'OWED_TO_ME' ? '+' : '-'}{symbol}{remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </AppText>
+                    <View style={styles.amountMeta}>
+                      <StatusChip status={entry.status} />
+                      {entry.status !== 'SETTLED' && <NudgeButton entry={entry} size={28} />}
+                    </View>
+                  </View>
+                </View>
+
+                {/* Row 2: Clean Progress bar (only when partial returns exist) */}
+                {entry.totalAmount > 0 && progressPct > 0 && progressPct < 1 && (
+                  <View style={styles.progressSection}>
+                    <View style={[styles.progressTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
                       <View
                         style={[
-                          styles.accountBadge,
+                          styles.progressFill,
                           {
-                            backgroundColor: isDark ? account.color + '15' : account.color + '0E',
-                            borderColor: isDark ? account.color + '2C' : account.color + '18',
+                            width: `${progressPct * 100}%` as any,
+                            backgroundColor: entry.personColor,
                           },
                         ]}
-                      >
-                        <Ionicons name={account.icon as any} size={9} color={account.color} />
-                        <AppText style={[styles.accountLabel, { color: account.color }]}>
-                          {account.name}
-                        </AppText>
-                      </View>
-                    )}
-                    {entry.note && (
-                      <AppText
-                        variant="caption"
-                        color={colors.text.secondary}
-                        numberOfLines={1}
-                        style={styles.note}
-                      >
-                        {entry.note}
-                      </AppText>
-                    )}
+                      />
+                    </View>
                   </View>
-                </View>
-
-                {/* Right: Amount + Status */}
-                <View style={styles.amountBlock}>
-                  <AppText
-                    style={[styles.amount, { color: dirColor }]}
-                    numberOfLines={1}
-                  >
-                    {entry.direction === 'OWED_TO_ME' ? '+' : '-'}{symbol}{remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </AppText>
-                  <View style={styles.amountMeta}>
-                    <StatusChip status={entry.status} />
-                    {entry.status !== 'SETTLED' && <NudgeButton entry={entry} size={28} />}
-                  </View>
-                </View>
+                )}
               </View>
-
-              {/* Row 2: Progress bar (only when partial returns exist) */}
-              {entry.totalAmount > 0 && progressPct > 0 && progressPct < 1 && (
-                <View style={styles.progressSection}>
-                  <View style={[styles.progressTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        {
-                          width: `${progressPct * 100}%` as any,
-                          backgroundColor: entry.personColor,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <AppText variant="caption" color={colors.text.secondary} style={styles.progressLabel}>
-                    {symbol}{entry.amountReturned.toLocaleString(undefined, { maximumFractionDigits: 0 })} returned of {symbol}{entry.totalAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                  </AppText>
-                </View>
-              )}
-            </Pressable>
-          </View>
-        </Animated.View>
+            </View>
+          </Animated.View>
+        </Pressable>
       </GestureDetector>
-    </View>
+    </Animated.View>
   );
 });
 
 const styles = StyleSheet.create({
-  swipeContainer: {
+  rowWrapper: {
     position: 'relative',
+    borderRadius: Radius.xl,
+    overflow: 'hidden',
     marginBottom: Spacing['3'],
   },
-  actions: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
+  pressableCard: {
+    zIndex: 2,
+  },
+  underlaySettle: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: Radius.xl,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingRight: 8,
+    paddingLeft: Spacing['5'],
+    gap: Spacing['2'],
+    zIndex: 1,
   },
-  actionBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.lg,
+  underlayDelete: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: Radius.xl,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+    zIndex: 1,
+  },
+  underlayDeletePressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: Spacing['5'],
+    gap: 6,
+    height: '100%',
+  },
+  underlayText: {
+    fontWeight: '700',
+    fontSize: 12,
   },
   card: {
     borderRadius: Radius.xl,
@@ -514,21 +590,15 @@ const styles = StyleSheet.create({
 
   /* Progress section */
   progressSection: {
-    gap: 5,
     marginTop: 2,
   },
   progressTrack: {
-    height: 3,
-    borderRadius: 2.5,
+    height: 3.5,
+    borderRadius: 2,
     overflow: 'hidden',
   },
   progressFill: {
-    height: 3,
-    borderRadius: 2.5,
-  },
-  progressLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    textAlign: 'right',
+    height: 3.5,
+    borderRadius: 2,
   },
 });
