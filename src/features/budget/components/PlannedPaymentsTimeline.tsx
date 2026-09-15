@@ -271,8 +271,9 @@ const PaymentRow = memo(function PaymentRow({ payment, onSettle, onDelete, onPre
                 <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
               </View>
 
-              {/* Title & Metadata */}
+              {/* Title & Metadata Hierarchy */}
               <View style={styles.infoCol}>
+                {/* Line 1: Bill Title + Minimal Recurring Indicator */}
                 <View style={styles.titleRow}>
                   <AppText
                     variant="labelMD"
@@ -283,32 +284,19 @@ const PaymentRow = memo(function PaymentRow({ payment, onSettle, onDelete, onPre
                     {payment.title}
                   </AppText>
                   {payment.isRecurring && (
-                    <View style={[styles.recurringChip, { backgroundColor: colors.glass.backgroundMid }]}>
-                      <Ionicons name="repeat" size={9} color={colors.text.tertiary} />
-                      <AppText style={[styles.recurringText, { color: colors.text.tertiary }]}>
+                    <View style={styles.recurringInline}>
+                      <Ionicons name="repeat" size={10} color={colors.text.tertiary} />
+                      <AppText style={[styles.recurringInlineText, { color: colors.text.tertiary }]}>
                         {payment.recurringInterval || 'Monthly'}
                       </AppText>
                     </View>
                   )}
                 </View>
 
-                {/* Badges: Due Date & Account */}
-                <View style={styles.chipsRow}>
-                  {/* Urgency Pill */}
-                  <View
-                    style={[
-                      styles.urgencyPill,
-                      {
-                        backgroundColor: isSettled
-                          ? colors.status.income + '16'
-                          : isOverdue
-                            ? colors.status.expense + '18'
-                            : urgent || days === 0
-                              ? colors.status.warning + '18'
-                              : colors.glass.backgroundMid,
-                      },
-                    ]}
-                  >
+                {/* Line 2: Natural Status & Account Context (Unified, NO cluttered pill containers) */}
+                <View style={styles.metaRow}>
+                  {/* Urgency / Due Date Status */}
+                  <View style={styles.urgencyInline}>
                     <Ionicons
                       name={
                         isSettled
@@ -316,10 +304,10 @@ const PaymentRow = memo(function PaymentRow({ payment, onSettle, onDelete, onPre
                           : isOverdue
                             ? 'alert-circle'
                             : urgent || days === 0
-                              ? 'time-outline'
+                              ? 'time'
                               : 'calendar-outline'
                       }
-                      size={10}
+                      size={11}
                       color={
                         isSettled
                           ? colors.status.income
@@ -327,12 +315,12 @@ const PaymentRow = memo(function PaymentRow({ payment, onSettle, onDelete, onPre
                             ? colors.status.expense
                             : urgent || days === 0
                               ? colors.status.warning
-                              : colors.text.secondary
+                              : colors.text.tertiary
                       }
                     />
                     <AppText
                       style={[
-                        styles.urgencyText,
+                        styles.urgencyInlineText,
                         {
                           color: isSettled
                             ? colors.status.income
@@ -341,6 +329,7 @@ const PaymentRow = memo(function PaymentRow({ payment, onSettle, onDelete, onPre
                               : urgent || days === 0
                                 ? colors.status.warning
                                 : colors.text.secondary,
+                          fontWeight: isOverdue || days === 0 ? '700' : '500',
                         },
                       ]}
                     >
@@ -354,14 +343,17 @@ const PaymentRow = memo(function PaymentRow({ payment, onSettle, onDelete, onPre
                     </AppText>
                   </View>
 
-                  {/* Bank Account Pill */}
+                  {/* Account Dot & Name */}
                   {account && (
-                    <View style={[styles.accountPill, { backgroundColor: account.color + '14' }]}>
-                      <View style={[styles.accountMiniDot, { backgroundColor: account.color }]} />
-                      <AppText style={[styles.accountLabel, { color: account.color }]} numberOfLines={1}>
-                        {account.name}
-                      </AppText>
-                    </View>
+                    <>
+                      <AppText style={[styles.metaDivider, { color: colors.glass.borderStrong }]}>·</AppText>
+                      <View style={styles.accountInline}>
+                        <View style={[styles.accountMiniDot, { backgroundColor: account.color }]} />
+                        <AppText style={[styles.accountInlineText, { color: colors.text.tertiary }]} numberOfLines={1}>
+                          {account.name}
+                        </AppText>
+                      </View>
+                    </>
                   )}
                 </View>
               </View>
@@ -394,19 +386,20 @@ const PaymentRow = memo(function PaymentRow({ payment, onSettle, onDelete, onPre
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                         onPress(payment);
                       }}
-                      hitSlop={4}
-                      style={[
-                        styles.payPill,
+                      hitSlop={5}
+                      style={({ pressed }) => [
+                        styles.payBtn,
                         {
                           backgroundColor: colors.brand.primary + '18',
-                          borderColor: colors.brand.primary + '40',
+                          borderColor: colors.brand.primary + '35',
+                          opacity: pressed ? 0.75 : 1,
                         },
                       ]}
                     >
-                      <AppText style={[styles.payPillText, { color: colors.brand.primary }]}>
+                      <AppText style={[styles.payBtnText, { color: colors.brand.primary }]}>
                         Pay
                       </AppText>
-                      <Ionicons name="arrow-forward" size={10} color={colors.brand.primary} />
+                      <Ionicons name="chevron-forward" size={10} color={colors.brand.primary} />
                     </Pressable>
 
                     {/* Quick 1-Tap Settle Checkmark */}
@@ -416,11 +409,12 @@ const PaymentRow = memo(function PaymentRow({ payment, onSettle, onDelete, onPre
                         handleSettleAction();
                       }}
                       hitSlop={6}
-                      style={[
+                      style={({ pressed }) => [
                         styles.quickCheckBtn,
                         {
                           backgroundColor: colors.status.income + '18',
                           borderColor: colors.status.income + '35',
+                          opacity: pressed ? 0.75 : 1,
                         },
                       ]}
                     >
@@ -813,71 +807,72 @@ const styles = StyleSheet.create({
   },
   billTitle: {
     fontWeight: '700',
-    fontSize: 14,
+    fontSize: 14.5,
     flexShrink: 1,
   },
   settledTitle: {
     textDecorationLine: 'line-through',
   },
-  recurringChip: {
+  recurringInline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
     paddingHorizontal: 5,
-    paddingVertical: 1.5,
-    borderRadius: Radius.sm,
+    paddingVertical: 1,
+    borderRadius: Radius.xs,
+    backgroundColor: 'rgba(128,128,128,0.08)',
   },
-  recurringText: {
-    fontSize: 9.5,
+  recurringInlineText: {
+    fontSize: 10,
     fontWeight: '600',
     textTransform: 'capitalize',
   },
 
-  // Chips: Urgency & Account
-  chipsRow: {
+  // Natural Meta Row (Unified Due Date & Account)
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
+    gap: 5,
+    marginTop: 2,
   },
-  urgencyPill: {
+  urgencyInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3.5,
+  },
+  urgencyInlineText: {
+    fontSize: 11,
+  },
+  metaDivider: {
+    fontSize: 11,
+    fontWeight: '800',
+    opacity: 0.6,
+  },
+  accountInline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: Radius.full,
-  },
-  urgencyText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  accountPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: Radius.full,
+    flexShrink: 1,
   },
   accountMiniDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  accountLabel: {
-    fontSize: 10,
-    fontWeight: '700',
+  accountInlineText: {
+    fontSize: 11,
+    fontWeight: '500',
   },
 
   // Amount & Action Column
   amountCol: {
     alignItems: 'flex-end',
-    gap: 5,
+    justifyContent: 'center',
+    gap: 4,
     flexShrink: 0,
   },
   amountText: {
-    fontSize: 14.5,
+    fontSize: 15,
     fontWeight: '800',
   },
   actionButtonGroup: {
@@ -885,23 +880,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
   },
-  payPill: {
+  payBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 2,
     paddingHorizontal: 8,
-    paddingVertical: 3.5,
+    paddingVertical: 3,
     borderRadius: Radius.full,
     borderWidth: 1,
   },
-  payPillText: {
+  payBtnText: {
     fontSize: 10.5,
     fontWeight: '700',
   },
   quickCheckBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
