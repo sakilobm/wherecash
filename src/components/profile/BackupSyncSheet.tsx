@@ -37,6 +37,7 @@ import { useBudgetStore } from '@store/budgetStore';
 import { useLoansStore } from '@store/loansStore';
 import { useLedgerStore } from '@store/ledgerStore';
 import { usePreferencesStore } from '@store/preferencesStore';
+import { saveFileToDevice, shareTextContent, getExportFileName } from '@/utils/exportManager';
 
 interface Props {
   onClose: () => void;
@@ -143,34 +144,64 @@ export function BackupSyncSheet({ onClose }: Props) {
     return () => loop.stop();
   }, []);
 
-  // ── Export full JSON backup ────────────────────────────────────────────────────
-  const handleExportBackup = async () => {
+  // ── Export full JSON backup (File or Text) ──────────────────────────────────
+  const getFullBackupData = () => ({
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    accounts: useAccountStore.getState().accounts,
+    transactions: useTransactionStore.getState().transactions,
+    categories: useCategoryStore.getState().categories,
+    payments: usePlannedPaymentsStore.getState().payments,
+    budgets: useBudgetStore.getState().budgets,
+    loans: useLoansStore.getState().loans,
+    ledger: useLedgerStore.getState().entries,
+    preferences: {
+      hapticLevel: usePreferencesStore.getState().hapticLevel,
+      notifPrefs: usePreferencesStore.getState().notifPrefs,
+    },
+  });
+
+  const handleExportBackupFile = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      const backupData = {
-        version: '1.0.0',
-        timestamp: new Date().toISOString(),
-        accounts: useAccountStore.getState().accounts,
-        transactions: useTransactionStore.getState().transactions,
-        categories: useCategoryStore.getState().categories,
-        payments: usePlannedPaymentsStore.getState().payments,
-        budgets: useBudgetStore.getState().budgets,
-        loans: useLoansStore.getState().loans,
-        ledger: useLedgerStore.getState().entries,
-        preferences: {
-          hapticLevel: usePreferencesStore.getState().hapticLevel,
-          notifPrefs: usePreferencesStore.getState().notifPrefs,
-        },
-      };
-
+      const backupData = getFullBackupData();
       const jsonStr = JSON.stringify(backupData, null, 2);
-      await Share.share({
-        message: `WHEREKASH_BACKUP_DATA:\n${jsonStr}`,
-        title: 'WhereCash Database Backup',
+      const fileName = getExportFileName('wherecash_backup', 'json');
+
+      const res = await saveFileToDevice({
+        fileName,
+        extension: 'json',
+        mimeType: 'application/json',
+        content: jsonStr,
       });
-      toast.success('Backup data compiled and shared!');
+
+      if (res.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        toast.success(`Backup file saved: ${res.fileName ?? fileName}`);
+      } else if (!res.canceled) {
+        toast.error(res.error || 'Failed to save backup file.');
+      }
     } catch (err) {
       toast.error('Failed to create backup export file.');
+      console.error(err);
+    }
+  };
+
+  const handleShareBackupText = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const backupData = getFullBackupData();
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      const success = await shareTextContent({
+        title: 'WhereCash Database Backup',
+        content: `WHEREKASH_BACKUP_DATA:\n${jsonStr}`,
+      });
+      if (success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        toast.success('Backup data shared as text!');
+      }
+    } catch (err) {
+      toast.error('Failed to share backup data.');
       console.error(err);
     }
   };
@@ -384,14 +415,15 @@ export function BackupSyncSheet({ onClose }: Props) {
           MANUAL BACKUP
         </AppText>
 
-        {/* Export button */}
+        {/* 1. Priority: Save Backup File */}
         <Pressable
-          onPress={handleExportBackup}
+          onPress={handleExportBackupFile}
           style={({ pressed }) => [
             s.actionCard,
             {
               backgroundColor: cardBg,
-              borderColor: colors.glass.border,
+              borderColor: colors.status.income + '40',
+              borderWidth: 1.5,
               opacity: pressed ? 0.8 : 1,
             },
           ]}
@@ -403,9 +435,42 @@ export function BackupSyncSheet({ onClose }: Props) {
             <Ionicons name="download-outline" size={16} color="#FFF" />
           </LinearGradient>
           <View style={{ flex: 1, gap: 2 }}>
-            <AppText variant="labelLG" color={colors.text.primary}>Export Full Backup</AppText>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <AppText variant="labelLG" color={colors.text.primary} style={{ fontWeight: '700' }}>
+                Save Backup File (.json)
+              </AppText>
+              <View style={[s.priorityBadge, { backgroundColor: colors.status.income + '20' }]}>
+                <AppText style={{ color: colors.status.income, fontSize: 9, fontWeight: '800' }}>
+                  PRIORITY
+                </AppText>
+              </View>
+            </View>
             <AppText variant="caption" color={colors.text.tertiary}>
-              Compile all {totalRecords} records into a secure JSON file
+              Pick folder & save physical .json backup to device storage
+            </AppText>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
+        </Pressable>
+
+        {/* 2. Secondary: Share Backup as Text */}
+        <Pressable
+          onPress={handleShareBackupText}
+          style={({ pressed }) => [
+            s.actionCard,
+            {
+              backgroundColor: cardBg,
+              borderColor: colors.glass.border,
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <View style={[s.actionIconCircle, { backgroundColor: colors.brand.primary + '18' }]}>
+            <Ionicons name="share-social-outline" size={16} color={colors.brand.primary} />
+          </View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <AppText variant="labelLG" color={colors.text.primary}>Share Backup as Text</AppText>
+            <AppText variant="caption" color={colors.text.tertiary}>
+              Copy or send full JSON payload to WhatsApp, Notes or cloud
             </AppText>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
@@ -713,5 +778,10 @@ const s = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '700',
     color: '#FFF',
+  },
+  priorityBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.xs,
   },
 });

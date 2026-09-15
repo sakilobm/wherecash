@@ -113,9 +113,9 @@ export function useProfileScreen() {
     setCurrencySheet(false);
   }, [currencySelect]);
 
-  const handleExport = useCallback(async (fmt: 'CSV' | 'JSON') => {
+  const handleExport = useCallback(async (fmt: 'CSV' | 'JSON', method: 'file' | 'text' = 'file') => {
     setExportSheet(false);
-    await exportData(fmt);
+    await exportData(fmt, method);
   }, [exportData]);
 
   const confirmSignOut = useCallback(() => {

@@ -10,6 +10,15 @@ import { resetAllStores } from '@store/resetAllStores';
 import { seedDemoData, undoDemoData } from '@store/seedDemoData';
 import { useLoadingStore } from '@store/loadingStore';
 import type { CurrencyCode } from '@store/types';
+import {
+  generateTransactionsCSV,
+  generateJSONString,
+  getExportFileName,
+  saveFileToDevice,
+  shareTextContent,
+  type ExportFormat,
+  type ExportMethod,
+} from '@/utils/exportManager';
 
 export function useProfile() {
   const { user, signOut, setUser } = useAuth();
@@ -58,24 +67,75 @@ export function useProfile() {
     [user, setUser],
   );
 
-  const handleExport = useCallback(
-    async (fmt: 'CSV' | 'JSON') => {
+  const handleExportAsFile = useCallback(
+    async (fmt: ExportFormat) => {
       try {
-        let content = '';
-        if (fmt === 'CSV') {
-          const header = 'Date,Type,Category,Amount,Currency,Description\n';
-          const rows = transactions
-            .map((t) => `${t.date},${t.type},${t.category},${t.amount},${t.currency},"${t.description}"`)
-            .join('\n');
-          content = header + rows;
+        const content = fmt === 'CSV'
+          ? generateTransactionsCSV(transactions)
+          : generateJSONString(transactions);
+
+        const ext = fmt === 'CSV' ? 'csv' : 'json';
+        const mimeType = fmt === 'CSV' ? 'text/csv' : 'application/json';
+        const fileName = getExportFileName('wherecash_transactions', ext);
+
+        const res = await saveFileToDevice({
+          fileName,
+          extension: ext,
+          mimeType,
+          content,
+        });
+
+        if (res.success) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          toast.success(`Saved ${res.fileName ?? fileName} to storage!`);
+          return true;
+        } else if (res.canceled) {
+          return false;
         } else {
-          content = JSON.stringify(transactions, null, 2);
+          toast.error(res.error || 'Failed to save export file');
+          return false;
         }
-        await Share.share({ message: `WhereCash Export (${fmt})\n\n${content}`, title: `WhereCash ${fmt}` });
-        toast.success(`Exported ${txCount} transactions as ${fmt}`);
-      } catch (_) {}
+      } catch (err: any) {
+        toast.error('Export error: ' + (err?.message || 'unknown'));
+        return false;
+      }
     },
-    [transactions, txCount],
+    [transactions],
+  );
+
+  const handleShareAsText = useCallback(
+    async (fmt: ExportFormat) => {
+      try {
+        const content = fmt === 'CSV'
+          ? generateTransactionsCSV(transactions)
+          : generateJSONString(transactions);
+
+        const success = await shareTextContent({
+          title: `WhereCash Export (${fmt})`,
+          content: `WhereCash Export (${fmt})\n\n${content}`,
+        });
+
+        if (success) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          toast.success(`Export shared as text`);
+        }
+        return success;
+      } catch (err: any) {
+        toast.error('Share error: ' + (err?.message || 'unknown'));
+        return false;
+      }
+    },
+    [transactions],
+  );
+
+  const handleExport = useCallback(
+    async (fmt: ExportFormat, method: ExportMethod = 'file') => {
+      if (method === 'file') {
+        return await handleExportAsFile(fmt);
+      }
+      return await handleShareAsText(fmt);
+    },
+    [handleExportAsFile, handleShareAsText],
   );
 
   const handleBackup = useCallback(() => {
@@ -140,6 +200,8 @@ export function useProfile() {
     handleEditName,
     handleCurrencySelect,
     handleExport,
+    handleExportAsFile,
+    handleShareAsText,
     handleBackup,
     handleClearAllData,
     handleSeedDemoData,
