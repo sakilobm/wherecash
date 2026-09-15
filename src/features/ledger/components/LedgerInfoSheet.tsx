@@ -69,17 +69,26 @@ export function LedgerInfoSheet({ entry, onClose, onPartialReturn, onSettle }: P
 
   if (!entry) return null;
 
-  const remaining   = entry.totalAmount - entry.amountReturned;
-  const progressPct = entry.totalAmount > 0 ? entry.amountReturned / entry.totalAmount : 0;
+  const remaining   = Math.max(0, entry.totalAmount - entry.amountReturned);
+  const returnedPct = entry.totalAmount > 0 ? Math.min(entry.amountReturned / entry.totalAmount, 1) : 0;
+  const remainingPct = entry.totalAmount > 0 ? Math.max(remaining / entry.totalAmount, 0) : 0;
   const dirColor    = entry.direction === 'OWED_TO_ME' ? colors.status.income : colors.status.expense;
   const statusColor =
     entry.status === 'SETTLED' ? colors.status.income :
     entry.status === 'OVERDUE' ? colors.status.expense : colors.status.info;
 
+  // Clear Intentional Semantic Colors:
+  // - Returned: Emerald Green (recovered/settled progress)
+  // - Remaining: Amber for Owed To Me (receivable pending) or Rose/Expense for I Owe (payable pending)
+  const returnedColor = colors.status.income;
+  const remainingColor = remaining > 0
+    ? (entry.direction === 'OWED_TO_ME' ? colors.status.warning : colors.status.expense)
+    : colors.text.tertiary;
+
   const stats = [
-    { label: 'Total',     value: entry.totalAmount,     color: colors.text.primary       },
-    { label: 'Returned',  value: entry.amountReturned,  color: colors.status.income       },
-    { label: 'Remaining', value: remaining,              color: remaining > 0 ? dirColor : colors.status.income },
+    { label: 'Total',     value: entry.totalAmount,    color: colors.text.primary },
+    { label: 'Returned',  value: entry.amountReturned, color: returnedColor },
+    { label: 'Remaining', value: remaining,            color: remainingColor },
   ];
 
   return (
@@ -159,10 +168,58 @@ export function LedgerInfoSheet({ entry, onClose, onPartialReturn, onSettle }: P
           ))}
         </View>
 
-        {/* Progress bar */}
-        {progressPct > 0 && progressPct < 1 && (
-          <View style={[s.progressTrack, { backgroundColor: colors.glass.background }]}>
-            <View style={[s.progressFill, { width: `${progressPct * 100}%` as any, backgroundColor: entry.personColor }]} />
+        {/* Intentional Segmented Progress Bar matching Returned & Remaining colors */}
+        {entry.totalAmount > 0 && (
+          <View style={s.progressSection}>
+            <View style={[s.progressTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+              {returnedPct > 0 && (
+                <View
+                  style={[
+                    s.progressSegment,
+                    {
+                      width: `${returnedPct * 100}%` as any,
+                      backgroundColor: returnedColor,
+                      borderTopLeftRadius: 3,
+                      borderBottomLeftRadius: 3,
+                      borderTopRightRadius: remainingPct === 0 ? 3 : 0,
+                      borderBottomRightRadius: remainingPct === 0 ? 3 : 0,
+                    },
+                  ]}
+                />
+              )}
+              {remainingPct > 0 && (
+                <View
+                  style={[
+                    s.progressSegment,
+                    {
+                      width: `${remainingPct * 100}%` as any,
+                      backgroundColor: remainingColor,
+                      borderTopRightRadius: 3,
+                      borderBottomRightRadius: 3,
+                      borderTopLeftRadius: returnedPct === 0 ? 3 : 0,
+                      borderBottomLeftRadius: returnedPct === 0 ? 3 : 0,
+                    },
+                  ]}
+                />
+              )}
+            </View>
+
+            {/* Sub-bar context row */}
+            <View style={s.progressMetaRow}>
+              <View style={s.legendItem}>
+                <View style={[s.legendDot, { backgroundColor: returnedColor }]} />
+                <AppText style={[s.legendText, { color: returnedColor }]}>
+                  {Math.round(returnedPct * 100)}% Returned
+                </AppText>
+              </View>
+
+              <View style={s.legendItem}>
+                <View style={[s.legendDot, { backgroundColor: remainingColor }]} />
+                <AppText style={[s.legendText, { color: remainingColor }]}>
+                  {Math.round(remainingPct * 100)}% Remaining
+                </AppText>
+              </View>
+            </View>
           </View>
         )}
 
@@ -261,8 +318,42 @@ const s = StyleSheet.create({
   statValue: { fontSize: 16, fontWeight: '700' },
   statLabel: { fontSize: 10, fontWeight: '500', letterSpacing: 0.3 },
 
-  progressTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
-  progressFill:  { height: 4, borderRadius: 2 },
+  progressSection: {
+    gap: 6,
+    marginTop: -2,
+    marginBottom: 4,
+  },
+  progressTrack: {
+    height: 7,
+    borderRadius: 3.5,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    width: '100%',
+  },
+  progressSegment: {
+    height: '100%',
+  },
+  progressMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  legendDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  legendText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.1,
+  },
 
   meta:    { gap: Spacing['2'] },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
