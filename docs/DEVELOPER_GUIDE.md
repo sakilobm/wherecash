@@ -359,4 +359,9 @@ When an app forces both intentions into a single generic input sheet without cle
    - Completely removes redundant duplicate account modal sheets from the codebase.
    - Preserves all entered bill fields (amount, recurrence, title, due date, category) via `plannedPaymentDraftStore`.
    - On saving a new account in My Accounts, automatically routes back (`router.back()`), restores the bill wizard at Step 2, and auto-selects the newly created bank account.
+9. **Pure Icon Circular FAB with Directional Scroll Auto-Hide & Reveal**:
+   - Completely eliminates text clutter from the FAB: rendered as a sleek, perfectly circular 52x52 button with centered `+` icon (`size={24}`).
+   - **Zero Card Obstruction on Scroll Down**: When the user scrolls down to inspect cards, the FAB smoothly slides down off-screen (`translateY: 85, opacity: 0`) with `withSpring` physics.
+   - **Instant Re-appearance on Scroll Up**: Scrolling up even slightly springs the FAB back into view immediately.
+   - **100% Native UI-Thread Execution**: Runs purely inside Reanimated worklets (`'worklet'`) with zero JS thread re-renders and zero frame drops.
 

@@ -24,9 +24,11 @@ export default function BudgetScreen() {
 
   return (
     <SafeAreaView style={[s.safeArea, { backgroundColor: colors.background.primary }]} edges={['top']}>
-      <ScrollView
+      <Animated.ScrollView
         contentContainerStyle={[s.scroll, { paddingBottom: Layout.tabBarHeight + Spacing['8'] }]}
         showsVerticalScrollIndicator={false}
+        onScroll={screen.onScroll}
+        scrollEventThrottle={16}
         refreshControl={<RefreshControl refreshing={screen.isLoading} onRefresh={screen.refresh} tintColor={colors.brand.primary} />}
       >
         <AppHeader
@@ -99,7 +101,7 @@ export default function BudgetScreen() {
             )}
           </View>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Sheets & Dialogs */}
       <AddPaymentSheet
@@ -127,7 +129,7 @@ export default function BudgetScreen() {
         }}
       />
 
-      <FAB icon="add" label="Budget" onPress={screen.openAddPayment} />
+      <FAB icon="add" onPress={screen.openAddPayment} visible={screen.isFabVisible} />
     </SafeAreaView>
   );
 }

@@ -14,6 +14,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { useBudgets, type SpendingStats } from './useBudgets';
 import { usePlannedPayments } from './usePlannedPayments';
 import { usePlannedPaymentDraftStore } from '@store/plannedPaymentDraftStore';
@@ -69,6 +70,28 @@ export function useBudgetScreen() {
   const [addBudgetVisible, setAddBudgetVisible] = useState(false);
   const [limitCategory, setLimitCategory] = useState<string | undefined>(undefined);
   const [activePartialPayment, setActivePartialPayment] = useState<PlannedPayment | null>(null);
+
+  // Scroll Animation for Directional FAB Auto-Hide/Show (100% Native UI Thread)
+  const isFabVisible = useSharedValue(true);
+  const lastScrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      const currentY = event.contentOffset.y;
+      const diff = currentY - lastScrollY.value;
+
+      // Scroll Down (browsing cards): hide FAB so it never blocks content
+      if (diff > 6 && currentY > 35) {
+        isFabVisible.value = false;
+      }
+      // Scroll Up or near top: immediately reveal FAB
+      else if (diff < -6 || currentY <= 20) {
+        isFabVisible.value = true;
+      }
+
+      lastScrollY.value = currentY;
+    },
+  });
 
   // ── Memoized Filtering & Data Synthesis ─────────────────────────────────────
   const filteredPayments = useMemo(() => {
@@ -176,6 +199,8 @@ export function useBudgetScreen() {
     activePartialPayment,
     addBudgetVisible,
     addPaymentVisible,
+    isFabVisible,
+    onScroll,
 
     // Actions & Toggles
     handleSetLimit,
