@@ -25,7 +25,7 @@ import {
   ActivityIndicator,
   Platform,
   Animated,
-  Alert,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -97,6 +97,11 @@ export function BackupSyncSheet({ onClose }: Props) {
   const [showRestoreArea, setShowRestoreArea] = useState(false);
   const [restorePayload, setRestorePayload] = useState('');
   const [activeActionFile, setActiveActionFile] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    type: 'restore' | 'delete';
+    snapshot: BackupSnapshot;
+  } | null>(null);
+  const [isActionExecuting, setIsActionExecuting] = useState(false);
 
   // ── Animated Values ───────────────────────────────────────────────────────────
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -185,37 +190,10 @@ export function BackupSyncSheet({ onClose }: Props) {
     }
   };
 
-  // ── 1-Tap Snapshot Restore ────────────────────────────────────────────────────
+  // ── 1-Tap Snapshot Restore (Opens Modern Stylish Dialog) ───────────────────────
   const handleRestoreSnapshot = (snapshot: BackupSnapshot) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Alert.alert(
-      'Restore Local Snapshot?',
-      `This will overwrite current data with the backup from ${snapshot.formattedDate} (${snapshot.recordCount} records).\n\nAre you sure you want to proceed?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Restore Data',
-          style: 'destructive',
-          onPress: async () => {
-            setActiveActionFile(snapshot.fileName);
-            try {
-              const res = await restoreFromFileUri(snapshot.uri);
-              if (res.success) {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                toast.success(`Restored ${res.restoredRecords} records from snapshot!`);
-                onClose();
-              } else {
-                toast.error(res.error || 'Failed to restore snapshot');
-              }
-            } catch (err: any) {
-              toast.error(`Restore error: ${err.message || 'unknown'}`);
-            } finally {
-              setActiveActionFile(null);
-            }
-          },
-        },
-      ]
-    );
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setConfirmModal({ type: 'restore', snapshot });
   };
 
   // ── 1-Tap Snapshot Share / Save to External Storage ───────────────────────────
@@ -234,26 +212,46 @@ export function BackupSyncSheet({ onClose }: Props) {
     }
   };
 
-  // ── 1-Tap Snapshot Delete ─────────────────────────────────────────────────────
+  // ── 1-Tap Snapshot Delete (Opens Modern Stylish Dialog) ────────────────────────
   const handleDeleteSnapshot = (snapshot: BackupSnapshot) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(
-      'Delete Backup Snapshot?',
-      `Are you sure you want to remove the snapshot from ${snapshot.formattedDate}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            await deleteLocalBackup(snapshot.fileName);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            toast.info('Snapshot deleted');
-            refreshSnapshots();
-          },
-        },
-      ]
-    );
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setConfirmModal({ type: 'delete', snapshot });
+  };
+
+  // ── Execute Confirmed Action (Modern Dialog Callback) ─────────────────────────
+  const handleExecuteConfirm = async () => {
+    if (!confirmModal || isActionExecuting) return;
+    const { type, snapshot } = confirmModal;
+
+    setIsActionExecuting(true);
+    setActiveActionFile(snapshot.fileName);
+
+    try {
+      if (type === 'restore') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        const res = await restoreFromFileUri(snapshot.uri);
+        if (res.success) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          toast.success(`Restored ${res.restoredRecords} records from snapshot!`);
+          setConfirmModal(null);
+          onClose();
+        } else {
+          toast.error(res.error || 'Failed to restore snapshot');
+        }
+      } else if (type === 'delete') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        await deleteLocalBackup(snapshot.fileName);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        toast.info('Snapshot deleted');
+        setConfirmModal(null);
+        refreshSnapshots();
+      }
+    } catch (err: any) {
+      toast.error(`Action error: ${err.message || 'unknown'}`);
+    } finally {
+      setIsActionExecuting(false);
+      setActiveActionFile(null);
+    }
   };
 
   // ── Pick .json File From Native Device Storage ────────────────────────────────
@@ -334,7 +332,8 @@ export function BackupSyncSheet({ onClose }: Props) {
   });
 
   return (
-    <ScrollView style={s.container} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+    <>
+      <ScrollView style={s.container} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
 
       {/* ═══════════════════════════════════════════════════════════════════════
           HERO: SYNC & BACKUP STATUS CARD
@@ -782,7 +781,197 @@ export function BackupSyncSheet({ onClose }: Props) {
       {/* Bottom spacer */}
       <View style={{ height: Spacing['6'] }} />
     </ScrollView>
-  );
+
+    {/* ═══════════════════════════════════════════════════════════════════════
+        MODERN STYLISH CONFIRMATION DIALOG (RESTORE / DELETE)
+       ═══════════════════════════════════════════════════════════════════════ */}
+    <Modal
+      visible={!!confirmModal}
+      transparent
+      statusBarTranslucent
+      animationType="fade"
+      onRequestClose={() => {
+        if (!isActionExecuting) setConfirmModal(null);
+      }}
+    >
+      <View style={s.modalOverlay}>
+        {/* Dimmed Backdrop */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => {
+            if (!isActionExecuting) setConfirmModal(null);
+          }}
+        >
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay.heavy }]} />
+        </Pressable>
+
+        {/* Elevated Glass Dialog Card */}
+        {confirmModal && (
+          <View
+            style={[
+              s.modalCard,
+              {
+                backgroundColor: isDark ? colors.surface.sheet : colors.white,
+                borderColor: confirmModal.type === 'restore'
+                  ? colors.status.income + '45'
+                  : colors.status.expense + '45',
+                shadowColor: colors.black,
+              },
+            ]}
+          >
+            {/* Glow Halo & Icon */}
+            <View
+              style={[
+                s.modalIconHalo,
+                {
+                  backgroundColor: confirmModal.type === 'restore'
+                    ? colors.status.income + '18'
+                    : colors.status.expense + '18',
+                },
+              ]}
+            >
+              <View
+                style={[
+                  s.modalIconCircle,
+                  {
+                    backgroundColor: confirmModal.type === 'restore'
+                      ? colors.status.income + '28'
+                      : colors.status.expense + '28',
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={confirmModal.type === 'restore' ? 'refresh' : 'trash-outline'}
+                  size={26}
+                  color={confirmModal.type === 'restore' ? colors.status.income : colors.status.expense}
+                />
+              </View>
+            </View>
+
+            {/* Title & Subtitle */}
+            <AppText variant="headingSM" color={colors.text.primary} align="center" style={s.modalTitle}>
+              {confirmModal.type === 'restore' ? 'Restore Local Snapshot?' : 'Delete Snapshot?'}
+            </AppText>
+
+            <AppText variant="bodySM" color={colors.text.secondary} align="center" style={s.modalSubtitle}>
+              {confirmModal.type === 'restore'
+                ? 'Your database will be restored to the state preserved in this snapshot file.'
+                : 'Are you sure you want to permanently delete this snapshot file from local device storage?'}
+            </AppText>
+
+            {/* Snapshot Metadata Box */}
+            <View
+              style={[
+                s.modalSnapshotInfo,
+                {
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                  borderColor: colors.glass.border,
+                },
+              ]}
+            >
+              <View style={s.modalInfoRow}>
+                <View style={s.modalInfoCol}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="calendar-outline" size={11} color={colors.text.tertiary} />
+                    <AppText variant="caption" color={colors.text.tertiary}>DATE</AppText>
+                  </View>
+                  <AppText style={[s.modalInfoValue, { color: colors.text.primary }]} numberOfLines={1}>
+                    {confirmModal.snapshot.formattedDate}
+                  </AppText>
+                </View>
+
+                <View style={[s.modalInfoDivider, { backgroundColor: colors.glass.border }]} />
+
+                <View style={s.modalInfoCol}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="layers-outline" size={11} color={colors.text.tertiary} />
+                    <AppText variant="caption" color={colors.text.tertiary}>RECORDS</AppText>
+                  </View>
+                  <AppText style={[s.modalInfoValue, { color: colors.text.primary }]}>
+                    {confirmModal.snapshot.recordCount} items
+                  </AppText>
+                </View>
+
+                <View style={[s.modalInfoDivider, { backgroundColor: colors.glass.border }]} />
+
+                <View style={s.modalInfoCol}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="server-outline" size={11} color={colors.text.tertiary} />
+                    <AppText variant="caption" color={colors.text.tertiary}>SIZE</AppText>
+                  </View>
+                  <AppText style={[s.modalInfoValue, { color: colors.text.primary }]}>
+                    {confirmModal.snapshot.sizeFormatted}
+                  </AppText>
+                </View>
+              </View>
+            </View>
+
+            {/* Warning Banner for Restore */}
+            {confirmModal.type === 'restore' && (
+              <View style={[s.modalWarningBox, { backgroundColor: colors.status.warning + '14', borderColor: colors.status.warning + '32' }]}>
+                <Ionicons name="alert-circle-outline" size={16} color={colors.status.warning} />
+                <AppText style={[s.modalWarningText, { color: colors.status.warning }]}>
+                  Active entries created after this backup will be replaced.
+                </AppText>
+              </View>
+            )}
+
+            {/* Modal Buttons */}
+            <View style={s.modalButtonRow}>
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  setConfirmModal(null);
+                }}
+                disabled={isActionExecuting}
+                style={({ pressed }) => [
+                  s.modalBtn,
+                  s.modalCancelBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                    borderColor: colors.glass.border,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <AppText style={[s.modalBtnText, { color: colors.text.secondary }]}>
+                  Cancel
+                </AppText>
+              </Pressable>
+
+              <Pressable
+                onPress={handleExecuteConfirm}
+                disabled={isActionExecuting}
+                style={({ pressed }) => [
+                  s.modalBtn,
+                  {
+                    backgroundColor: confirmModal.type === 'restore' ? colors.status.income : colors.status.expense,
+                    opacity: pressed || isActionExecuting ? 0.8 : 1,
+                  },
+                ]}
+              >
+                {isActionExecuting ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name={confirmModal.type === 'restore' ? 'refresh' : 'trash'}
+                      size={15}
+                      color="#FFF"
+                    />
+                    <AppText style={[s.modalBtnText, { color: '#FFF', fontWeight: '800' }]}>
+                      {confirmModal.type === 'restore' ? 'Restore Data' : 'Delete'}
+                    </AppText>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        )}
+      </View>
+    </Modal>
+  </>
+);
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -1073,5 +1262,115 @@ const s = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: Radius.xs,
+  },
+
+  /* ── Modern Stylish Confirmation Modal ─────────────────────────────────────── */
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing['5'],
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: Radius['2xl'],
+    borderWidth: 1.5,
+    padding: Spacing['6'],
+    alignItems: 'center',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.35,
+    shadowRadius: 28,
+    elevation: 20,
+    gap: Spacing['3'],
+  },
+  modalIconHalo: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing['1'],
+  },
+  modalIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontWeight: '800',
+    fontSize: 18,
+    letterSpacing: -0.3,
+  },
+  modalSubtitle: {
+    lineHeight: 18,
+    paddingHorizontal: Spacing['2'],
+    marginBottom: Spacing['1'],
+  },
+  modalSnapshotInfo: {
+    width: '100%',
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    paddingVertical: Spacing['3'],
+    paddingHorizontal: Spacing['3'],
+    marginVertical: Spacing['1'],
+  },
+  modalInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  modalInfoCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
+  modalInfoValue: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalInfoDivider: {
+    width: 1,
+    height: 24,
+  },
+  modalWarningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing['2'],
+    paddingVertical: Spacing['2'],
+    paddingHorizontal: Spacing['3'],
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    width: '100%',
+  },
+  modalWarningText: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 15,
+    flex: 1,
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    gap: Spacing['3'],
+    width: '100%',
+    marginTop: Spacing['2'],
+  },
+  modalBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing['3'],
+    borderRadius: Radius.lg,
+    gap: Spacing['2'],
+  },
+  modalCancelBtn: {
+    borderWidth: 1,
+  },
+  modalBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
