@@ -11,6 +11,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import { useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { useLedger } from './useLedger';
 import { useLoans }  from './useLoans';
 import type { LedgerEntry, LedgerDirection } from '@store/ledgerStore';
@@ -45,6 +46,28 @@ export function useLedgerScreen() {
   const [loanSheetVisible, setLoanSheetVisible] = useState(false);
   const [infoLoanId, setInfoLoanId]             = useState<string | null>(null);
   const [editLoan, setEditLoan]                 = useState<Loan | undefined>();
+
+  // ── Scroll Animation for Directional FAB Auto-Hide/Show (100% Native UI Thread) ──
+  const isFabVisible = useSharedValue(true);
+  const lastScrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      const currentY = event.contentOffset.y;
+      const diff = currentY - lastScrollY.value;
+
+      // Scroll Down (browsing entries/loans): hide FAB so it never blocks card details / actions
+      if (diff > 6 && currentY > 35) {
+        isFabVisible.value = false;
+      }
+      // Scroll Up or near top: immediately reveal FAB
+      else if (diff < -6 || currentY <= 20) {
+        isFabVisible.value = true;
+      }
+
+      lastScrollY.value = currentY;
+    },
+  });
 
   // ── Data layers ────────────────────────────────────────────────────────────
   const {
@@ -182,6 +205,8 @@ export function useLedgerScreen() {
     loanSheetVisible,
     infoLoan,
     editLoan,
+    isFabVisible,
+    onScroll,
     // Data
     totalOwedToMe,
     totalIOwe,

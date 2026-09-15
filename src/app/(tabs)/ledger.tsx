@@ -12,7 +12,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, Platform, ActivityIndicator } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@components/AppText';
@@ -58,6 +59,7 @@ export default function LedgerScreen() {
     activeTab, setActiveTab,
     sheetVisible, sheetMode, sheetEntry,
     infoEntry, loanSheetVisible, infoLoan, editLoan,
+    isFabVisible, onScroll,
     totalOwedToMe, totalIOwe,
     loans, sections, activeEntries,
     openAddSheet, openPartialSheet, closeSheet,
@@ -71,9 +73,11 @@ export default function LedgerScreen() {
   return (
     <SafeAreaView style={[s.root, { backgroundColor: colors.background.primary }]} edges={['top']}>
 
-      <ScrollView
+      <Animated.ScrollView
         contentContainerStyle={[s.scroll, { paddingBottom: Layout.tabBarHeight + Spacing['20'] }]}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
       >
         <AppHeader
           title="Ledger"
@@ -215,7 +219,7 @@ export default function LedgerScreen() {
             )}
           </>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Entry / partial-return sheet */}
       <LedgerEntrySheet
@@ -258,8 +262,8 @@ export default function LedgerScreen() {
 
       <FAB
         icon="add"
-        label={activeTab === 'loans' ? "Add Loan" : "Add Entry"}
         onPress={activeTab === 'loans' ? openLoanSheet : openAddSheet}
+        visible={isFabVisible}
       />
     </SafeAreaView>
   );
