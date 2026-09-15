@@ -20,6 +20,7 @@ import { useAccountStore } from '@store/accountStore';
 import { useTransactionStore } from '@store/transactionStore';
 import { useTheme } from '@hooks/useTheme';
 import { toast } from '@store/toastStore';
+import { usePlannedPaymentDraftStore } from '@store/plannedPaymentDraftStore';
 import type { Account, AccountType, CurrencyCode, Transaction } from '@store/types';
 import type { Ionicons } from '@expo/vector-icons';
 
@@ -67,16 +68,16 @@ export function useAccountsScreen() {
   const [initialPreset,  setInitialPreset]  = useState<Partial<AccountFormState> | undefined>(undefined);
   const [deleteTarget,   setDeleteTarget]   = useState<Account | null>(null);
 
-  const params = useLocalSearchParams<{ add?: string }>();
+  const params = useLocalSearchParams<{ add?: string; autoAdd?: string; returnTo?: string }>();
 
   useEffect(() => {
-    if (params.add === 'true') {
+    if (params.add === 'true' || params.autoAdd === 'true') {
       setEditingAccount(null);
       setInitialPreset(undefined);
       setFormVisible(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-  }, [params.add]);
+  }, [params.add, params.autoAdd]);
 
   const scrollX   = useSharedValue(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -178,6 +179,7 @@ export function useAccountsScreen() {
     if (!form.name.trim()) { toast.error('Account name is required'); return; }
     const balance = parseFloat(form.balance) || 0;
 
+    const newId = `acc-${Date.now()}`;
     if (editingAccount) {
       if (form.isDefault) accounts.forEach((a) => { if (a.id !== editingAccount.id) updateAccount(a.id, { isDefault: false }); });
       updateAccount(editingAccount.id, {
@@ -188,7 +190,7 @@ export function useAccountsScreen() {
     } else {
       if (form.isDefault) accounts.forEach((a) => updateAccount(a.id, { isDefault: false }));
       addAccount({
-        id: `acc-${Date.now()}`, userId: 'user-1',
+        id: newId, userId: 'user-1',
         name: form.name.trim(), type: form.type,
         balance, currency: form.currency,
         color: form.color, icon: form.icon,
@@ -200,6 +202,13 @@ export function useAccountsScreen() {
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setFormVisible(false);
+
+    // If redirected from Planned Payment creation, auto-select this account and return to bill details
+    if (params.returnTo === 'planned-bill') {
+      const selectedId = editingAccount ? editingAccount.id : newId;
+      usePlannedPaymentDraftStore.getState().setAccountId(selectedId);
+      router.back();
+    }
   };
 
   return {

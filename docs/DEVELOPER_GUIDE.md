@@ -354,4 +354,9 @@ When an app forces both intentions into a single generic input sheet without cle
    - Settled bills are past records that users rarely inspect daily.
    - Wrapped in a lazy collapsible accordion: default state mounts ZERO child components.
    - Only when user explicitly taps "View" does the list mount with `FadeInDown.duration(200)`.
+8. **Seamless Cross-Screen Account Creation & State Preservation (`+ Manage` Flow)**:
+   - Tapping `+ Manage` in Step 2 of planned bills redirects directly to the existing `My Accounts` screen (`/accounts?returnTo=planned-bill&autoAdd=true`).
+   - Completely removes redundant duplicate account modal sheets from the codebase.
+   - Preserves all entered bill fields (amount, recurrence, title, due date, category) via `plannedPaymentDraftStore`.
+   - On saving a new account in My Accounts, automatically routes back (`router.back()`), restores the bill wizard at Step 2, and auto-selects the newly created bank account.
 

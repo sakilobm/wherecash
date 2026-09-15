@@ -12,9 +12,11 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useBudgets, type SpendingStats } from './useBudgets';
 import { usePlannedPayments } from './usePlannedPayments';
+import { usePlannedPaymentDraftStore } from '@store/plannedPaymentDraftStore';
 import type { PlannedPayment } from '@store/plannedPaymentsStore';
 
 export type BudgetTabType = 'categories' | 'bills';
@@ -131,12 +133,26 @@ export function useBudgetScreen() {
     setViewMode((prev) => (prev === 'grid' ? 'capsules' : 'grid'));
   }, []);
 
+  // Reopen AddPaymentSheet at Step 2 with newly created account when returning from /accounts
+  useFocusEffect(
+    useCallback(() => {
+      const draft = usePlannedPaymentDraftStore.getState();
+      if (draft.pendingNavigation) {
+        draft.setPendingNavigation(false);
+        setAddPaymentVisible(true);
+      }
+    }, [])
+  );
+
   const openAddPayment = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setAddPaymentVisible(true);
   }, []);
 
   const closeAddPayment = useCallback(() => {
+    if (!usePlannedPaymentDraftStore.getState().pendingNavigation) {
+      usePlannedPaymentDraftStore.getState().resetDraft();
+    }
     setAddPaymentVisible(false);
   }, []);
 

@@ -20,9 +20,10 @@ import { BlurView } from 'expo-blur';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, FadeIn, FadeInLeft, FadeInRight } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { AppText } from '@components/AppText';
 import { CategoryFormSheet } from '@components/CategoryFormSheet';
-import { AccountsSheet } from '@components/AccountsSheet';
+import { usePlannedPaymentDraftStore } from '@store/plannedPaymentDraftStore';
 import { usePlannedPaymentForm, type PlannedPaymentFormData } from '@features/budget/hooks/usePlannedPaymentForm';
 import { useTheme } from '@hooks/useTheme';
 import { useFormatCurrency } from '@hooks/useFormatCurrency';
@@ -47,9 +48,7 @@ const QUICK_TEMPLATES = [
 export function AddPaymentSheet({ visible, onClose, onSubmit }: Props) {
   const { colors, isDark } = useTheme();
   const { symbol } = useFormatCurrency();
-  const [step, setStep] = useState<1 | 2>(1);
   const [createVisible, setCreateVisible] = useState(false);
-  const [accountsVisible, setAccountsVisible] = useState(false);
   const [showTemplatesDropdown, setShowTemplatesDropdown] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
@@ -68,6 +67,7 @@ export function AddPaymentSheet({ visible, onClose, onSubmit }: Props) {
   };
 
   const {
+    step, setStep,
     title, setTitle,
     amount, setAmount,
     dueDate, setDueDate,
@@ -86,8 +86,11 @@ export function AddPaymentSheet({ visible, onClose, onSubmit }: Props) {
 
   useEffect(() => {
     if (visible) {
-      reset();
-      setStep(1);
+      const draft = usePlannedPaymentDraftStore.getState();
+      // Only reset if fresh open (not returning from accounts navigation)
+      if (!draft.pendingNavigation && !draft.amount && !draft.title) {
+        reset();
+      }
       setShowTemplatesDropdown(false);
       setLocalStepError(null);
     }
@@ -518,7 +521,15 @@ export function AddPaymentSheet({ visible, onClose, onSubmit }: Props) {
                     <View style={s.inputField}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                         <AppText style={[s.fieldLabel, { color: colors.text.tertiary }]}>PAY FROM ACCOUNT</AppText>
-                        <Pressable onPress={() => setAccountsVisible(true)}>
+                        <Pressable
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            usePlannedPaymentDraftStore.getState().setPendingNavigation(true);
+                            onClose();
+                            router.push({ pathname: '/accounts', params: { returnTo: 'planned-bill', autoAdd: 'true' } });
+                          }}
+                          hitSlop={8}
+                        >
                           <AppText variant="caption" color={colors.brand.primary} style={{ fontWeight: '700', fontSize: 11 }}>
                             + Manage
                           </AppText>
@@ -738,11 +749,6 @@ export function AddPaymentSheet({ visible, onClose, onSubmit }: Props) {
         visible={createVisible}
         onClose={() => setCreateVisible(false)}
         onSaved={(id) => setCategory(id)}
-      />
-
-      <AccountsSheet
-        visible={accountsVisible}
-        onClose={() => setAccountsVisible(false)}
       />
     </>
   );
