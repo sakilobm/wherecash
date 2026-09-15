@@ -167,7 +167,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Step = 'source' | 'permission' | 'select_file' | 'paste' | 'preview' | 'importing' | 'done';
+type Step = 'source' | 'paste' | 'preview' | 'importing' | 'done';
 
 interface ParsedTransaction {
   date: string;
@@ -218,6 +218,10 @@ export function ImportSheet({ onClose }: Props) {
 
   const animatedSpinner = useAnimatedStyle(() => ({
     transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
+  const animatedSpinnerReverse = useAnimatedStyle(() => ({
+    transform: [{ rotate: `-${rotation.value * 1.5}deg` }],
   }));
 
   // Trigger infinite spinner rotation when importing
@@ -498,6 +502,7 @@ export function ImportSheet({ onClose }: Props) {
 
   // ── Run Import Process ──
   const handleExecuteImport = useCallback(async () => {
+    progressWidth.value = 0;
     setStep('importing');
     setErrorMsg(null);
 
@@ -563,32 +568,54 @@ export function ImportSheet({ onClose }: Props) {
 
   return (
     <View style={is.wrapper}>
-      {/* Dynamic Immersive Loading Screen */}
-      {step === 'importing' && (
+      {/* Dynamic Immersive Full-Height Loading Screen */}
+      {step === 'importing' ? (
         <Animated.View
-          entering={FadeIn}
-          exiting={FadeOut}
-          style={[StyleSheet.absoluteFill, is.loaderOverlay, { backgroundColor: colors.background.primary }]}
+          entering={FadeIn.duration(220)}
+          exiting={FadeOut.duration(200)}
+          style={[is.loaderContainer, { backgroundColor: colors.surface.sheet }]}
         >
           <View style={is.loaderContent}>
             {/* Spinning Rings */}
             <View style={is.spinnerContainer}>
-              <Animated.View style={[is.spinnerOuter, animatedSpinner, { borderColor: colors.brand.primary + '20', borderTopColor: colors.brand.primary }]} />
-              <Animated.View style={[is.spinnerInner, { ...animatedSpinner, transform: [{ rotate: `-${rotation.value * 1.5}deg` }] }, { borderColor: '#38BDF820', borderTopColor: '#38BDF8' }]} />
-              <View style={[is.spinnerCenter, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }]}>
-                <Ionicons name="cloud-upload" size={24} color={colors.brand.primary} />
+              <Animated.View
+                style={[
+                  is.spinnerOuter,
+                  animatedSpinner,
+                  { borderColor: colors.brand.primary + '25', borderTopColor: colors.brand.primary },
+                ]}
+              />
+              <Animated.View
+                style={[
+                  is.spinnerInner,
+                  animatedSpinnerReverse,
+                  { borderColor: '#38BDF825', borderTopColor: '#38BDF8' },
+                ]}
+              />
+              <View
+                style={[
+                  is.spinnerCenter,
+                  { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)' },
+                ]}
+              >
+                <Ionicons name="cloud-upload" size={26} color={colors.brand.primary} />
               </View>
             </View>
 
             {/* Glowing text details */}
-            <AppText style={is.loaderTitle}>Processing Import</AppText>
+            <AppText style={[is.loaderTitle, { color: colors.text.primary }]}>Processing Import</AppText>
             <AppText style={[is.loaderSubtitle, { color: colors.text.secondary }]}>
               {loadingStepText}
             </AppText>
 
             {/* Premium progress bar */}
             <View style={is.progressWrap}>
-              <View style={[is.progressTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}>
+              <View
+                style={[
+                  is.progressTrack,
+                  { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' },
+                ]}
+              >
                 <Animated.View style={[is.progressFill, progressStyle]}>
                   <LinearGradient
                     colors={[colors.brand.primary, '#38BDF8']}
@@ -598,22 +625,20 @@ export function ImportSheet({ onClose }: Props) {
                   />
                 </Animated.View>
               </View>
-              <AppText variant="caption" color={colors.text.tertiary} style={{ marginTop: 4 }}>
+              <AppText variant="caption" color={colors.text.tertiary} style={{ marginTop: 8 }}>
                 Please do not close the app
               </AppText>
             </View>
           </View>
         </Animated.View>
-      )}
-
-      <ScrollView
-        style={{ flexShrink: 1 }}
-        contentContainerStyle={[is.root, { paddingBottom: 40 }]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* ── Step Indicators ── */}
-        {step !== 'importing' && (
+      ) : (
+        <ScrollView
+          style={{ flexShrink: 1 }}
+          contentContainerStyle={[is.root, { paddingBottom: 40 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* ── Step Indicators ── */}
           <Animated.View entering={FadeIn.duration(300)} style={is.stepRow}>
             {(['source', 'mapping', 'done'] as const).map((s, i) => {
               const currentStepIdx = ['source', 'paste'].includes(step)
@@ -676,7 +701,6 @@ export function ImportSheet({ onClose }: Props) {
               );
             })}
           </Animated.View>
-        )}
 
         {/* ════════════════════════════════════════════════════════════════════
             STEP 1: Source Selection
@@ -688,11 +712,20 @@ export function ImportSheet({ onClose }: Props) {
             </AppText>
 
             {errorMsg && (
-              <Animated.View entering={FadeInDown.duration(200)} style={is.errorRow}>
-                <Ionicons name="alert-circle" size={14} color="#EF4444" />
-                <AppText style={{ fontSize: 11, fontWeight: '600', color: '#EF4444', flex: 1 }}>
+              <Animated.View
+                entering={FadeInDown.duration(200)}
+                exiting={FadeOut.duration(150)}
+                style={is.errorBanner}
+              >
+                <View style={is.errorIconWrap}>
+                  <Ionicons name="alert-circle" size={15} color="#EF4444" />
+                </View>
+                <AppText style={is.errorText}>
                   {errorMsg}
                 </AppText>
+                <Pressable onPress={() => setErrorMsg(null)} hitSlop={10}>
+                  <Ionicons name="close" size={16} color={colors.text.tertiary} />
+                </Pressable>
               </Animated.View>
             )}
 
@@ -810,11 +843,20 @@ export function ImportSheet({ onClose }: Props) {
             </View>
 
             {errorMsg && (
-              <Animated.View entering={FadeInDown.duration(200)} style={is.errorRow}>
-                <Ionicons name="alert-circle" size={14} color="#EF4444" />
-                <AppText style={{ fontSize: 11, fontWeight: '600', color: '#EF4444', flex: 1 }}>
+              <Animated.View
+                entering={FadeInDown.duration(200)}
+                exiting={FadeOut.duration(150)}
+                style={is.errorBanner}
+              >
+                <View style={is.errorIconWrap}>
+                  <Ionicons name="alert-circle" size={15} color="#EF4444" />
+                </View>
+                <AppText style={is.errorText}>
                   {errorMsg}
                 </AppText>
+                <Pressable onPress={() => setErrorMsg(null)} hitSlop={10}>
+                  <Ionicons name="close" size={16} color={colors.text.tertiary} />
+                </Pressable>
               </Animated.View>
             )}
 
@@ -989,7 +1031,7 @@ export function ImportSheet({ onClose }: Props) {
 
             <Pressable
               onPress={() => {
-                setStep(selectedSource === 'paste' ? 'paste' : 'select_file');
+                setStep(selectedSource === 'paste' ? 'paste' : 'source');
                 setErrorMsg(null);
               }}
               style={({ pressed }) => [
@@ -1113,6 +1155,7 @@ export function ImportSheet({ onClose }: Props) {
           </Animated.View>
         )}
       </ScrollView>
+      )}
     </View>
   );
 }
@@ -1121,7 +1164,8 @@ export function ImportSheet({ onClose }: Props) {
 
 const is = StyleSheet.create({
   wrapper: {
-    flexShrink: 1,
+    minHeight: 460,
+    width: '100%',
   },
   root: {
     paddingHorizontal: Spacing['5'],
@@ -1192,75 +1236,44 @@ const is = StyleSheet.create({
     gap: 8,
   },
 
-  /* Permission Card */
-  permCard: {
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    padding: Spacing['5'],
-    alignItems: 'center',
-    gap: 12,
-  },
-  permGraphicContainer: {
-    marginVertical: 8,
-    alignItems: 'center',
-  },
-  permGlowCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+  /* Loading State Container */
+  loaderContainer: {
+    minHeight: 460,
+    height: 480,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#6C63FF',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  permTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  permDesc: {
-    fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 18,
-    paddingHorizontal: 12,
-  },
-  permNoticeBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 10,
-    borderRadius: Radius.md,
-    marginTop: 8,
-    width: '100%',
+    paddingVertical: Spacing['8'],
+    paddingHorizontal: Spacing['5'],
   },
 
-  /* File Picker Card */
-  pickerCard: {
-    borderRadius: Radius.xl,
-    borderWidth: 2,
-    paddingVertical: 36,
+  /* Error Banner */
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: Spacing['3'],
+    paddingVertical: 10,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    marginVertical: 4,
+  },
+  errorIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
   },
-  pickerIconWrap: {
-    alignItems: 'center',
-  },
-  pickerIconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pickerTypeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: Radius.xs,
-    marginTop: 8,
+  errorText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#EF4444',
+    flex: 1,
+    lineHeight: 16,
   },
 
   /* Paste Text Area */
@@ -1338,17 +1351,11 @@ const is = StyleSheet.create({
     borderTopColor: 'rgba(0,0,0,0.03)',
   },
 
-  /* Loading State Overlay */
-  loaderOverlay: {
-    zIndex: 9999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   loaderContent: {
     alignItems: 'center',
     gap: 14,
     width: '100%',
-    paddingHorizontal: 40,
+    paddingHorizontal: Spacing['5'],
   },
   spinnerContainer: {
     width: 100,
@@ -1384,24 +1391,26 @@ const is = StyleSheet.create({
     textAlign: 'center',
   },
   loaderSubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   progressWrap: {
     width: '100%',
+    maxWidth: 280,
     alignItems: 'center',
+    marginTop: 4,
   },
   progressTrack: {
-    height: 6,
-    borderRadius: 3,
+    height: 8,
+    borderRadius: 4,
     width: '100%',
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 4,
   },
 
   /* Buttons */
