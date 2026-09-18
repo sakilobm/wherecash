@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { zustandStorage } from './storage';
-import type { Transaction, NewTransaction, TransactionType, TransactionCategory } from './types';
+import type { Transaction, NewTransaction, TransactionType, TransactionCategory, CurrencyCode } from './types';
 import { CURRENCY_SYMBOLS } from './types';
 import { usePreferencesStore } from './preferencesStore';
 import { useBudgetStore } from './budgetStore';
@@ -23,6 +23,7 @@ interface TransactionState {
   setTransactions: (transactions: Transaction[]) => void;
   addTransaction: (transaction: Transaction) => void;
   updateTransaction: (id: string, updates: Partial<NewTransaction>) => void;
+  batchUpdateCurrency: (currency: CurrencyCode) => void;
   deleteTransaction: (id: string) => void;
   setFilters: (filters: Partial<TransactionFilters>) => void;
   resetFilters: () => void;
@@ -144,6 +145,11 @@ export const useTransactionStore = create<TransactionState>()(
           transactions: state.transactions.map((t) =>
             t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
           ),
+        })),
+
+      batchUpdateCurrency: (currency) =>
+        set((state) => ({
+          transactions: state.transactions.map((t) => ({ ...t, currency })),
         })),
 
       deleteTransaction: (id) =>

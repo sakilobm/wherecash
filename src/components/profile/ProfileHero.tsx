@@ -14,6 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { AppText } from '@components/AppText';
 import { useTheme } from '@hooks/useTheme';
 import { CURRENCY_SYMBOLS } from '@store/types';
@@ -32,6 +33,7 @@ interface Props {
   txCount: number;
   currency: CurrencyCode;
   onEditPress: () => void;
+  onCurrencyPress?: () => void;
 }
 
 function useEntrance(delay: number) {
@@ -47,7 +49,17 @@ function useEntrance(delay: number) {
   }));
 }
 
-export const ProfileHero = React.memo(function ProfileHero({ avatarId, initials, fullName, email, memberSince, txCount, currency, onEditPress }: Props) {
+export const ProfileHero = React.memo(function ProfileHero({
+  avatarId,
+  initials,
+  fullName,
+  email,
+  memberSince,
+  txCount,
+  currency,
+  onEditPress,
+  onCurrencyPress,
+}: Props) {
   const { colors, isDark } = useTheme();
   const anim = useEntrance(0);
 
@@ -83,10 +95,10 @@ export const ProfileHero = React.memo(function ProfileHero({ avatarId, initials,
     progressFraction = Math.min(1.0, Math.max(0, txCount / 15));
   }
 
-  const badges: { icon: IoniconName; label: string }[] = [
-    { icon: 'calendar-outline', label: `Joined ${memberSince}` },
-    { icon: 'swap-horizontal-outline', label: `${txCount} txs` },
-    { icon: 'cash-outline', label: `${currency} (${CURRENCY_SYMBOLS[currency] || currency})` },
+  const badges: { id: 'joined' | 'txs' | 'currency'; icon: IoniconName; label: string }[] = [
+    { id: 'joined', icon: 'calendar-outline', label: `Joined ${memberSince}` },
+    { id: 'txs', icon: 'swap-horizontal-outline', label: `${txCount} txs` },
+    { id: 'currency', icon: 'cash-outline', label: `${currency} (${CURRENCY_SYMBOLS[currency] || currency})` },
   ];
 
   return (
@@ -113,7 +125,7 @@ export const ProfileHero = React.memo(function ProfileHero({ avatarId, initials,
               s.tierChip,
               {
                 backgroundColor: colors.profileCard.proBg,
-                borderColor:     colors.profileCard.proBorder,
+                borderColor: colors.profileCard.proBorder,
               },
             ]}
           >
@@ -138,17 +150,26 @@ export const ProfileHero = React.memo(function ProfileHero({ avatarId, initials,
             </View>
           </Pressable>
 
-          <View style={s.profileDetails}>
-            <AppText variant="headingMD" style={[s.name, { color: colors.profileCard.nameColor }]} numberOfLines={1}>
-              {fullName}
-            </AppText>
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              onEditPress();
+            }}
+            style={({ pressed }) => [s.profileDetails, { opacity: pressed ? 0.75 : 1 }]}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <AppText variant="headingMD" style={[s.name, { color: colors.profileCard.nameColor }]} numberOfLines={1}>
+                {fullName}
+              </AppText>
+              <Ionicons name="pencil" size={11} color={colors.profileCard.nameColor} style={{ opacity: 0.6 }} />
+            </View>
             <AppText variant="caption" style={[s.email, { color: colors.profileCard.emailColor }]} numberOfLines={1}>
               {email || 'No email registered'}
             </AppText>
             <AppText style={[s.tierNameText, { color: colors.profileCard.proText }]}>
               {spenderTier}
             </AppText>
-          </View>
+          </Pressable>
         </View>
 
         {/* Progress Bar (Level Tracker) */}
@@ -179,24 +200,60 @@ export const ProfileHero = React.memo(function ProfileHero({ avatarId, initials,
 
         {/* Footer Row: Account Badges */}
         <View style={s.badges}>
-          {badges.map((b) => (
-            <View
-              key={b.label}
-              style={[
-                s.badge,
-                {
-                  backgroundColor: colors.profileCard.badgeBg,
-                  borderColor:     colors.profileCard.badgeBorder,
-                  borderWidth:     StyleSheet.hairlineWidth,
-                },
-              ]}
-            >
-              <Ionicons name={b.icon} size={11} color={colors.profileCard.badgeText} />
-              <AppText style={{ color: colors.profileCard.badgeText, fontSize: 10, fontWeight: '600' }}>
-                {b.label}
-              </AppText>
-            </View>
-          ))}
+          {badges.map((b) => {
+            const isCurrency = b.id === 'currency';
+            const isClickable = isCurrency && onCurrencyPress;
+            const badgeStyle = [
+              s.badge,
+              {
+                backgroundColor: colors.profileCard.badgeBg,
+                borderColor: isCurrency ? colors.profileCard.proBorder : colors.profileCard.badgeBorder,
+                borderWidth: StyleSheet.hairlineWidth,
+              },
+            ];
+
+            if (isClickable) {
+              return (
+                <Pressable
+                  key={b.id}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    onCurrencyPress?.();
+                  }}
+                  style={({ pressed }) => [
+                    badgeStyle,
+                    { opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <Ionicons name={b.icon} size={11} color={colors.profileCard.badgeText} />
+                  <AppText
+                    style={{ color: colors.profileCard.badgeText, fontSize: 10, fontWeight: '600' }}
+                    numberOfLines={1}
+                  >
+                    {b.label}
+                  </AppText>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={10}
+                    color={colors.profileCard.badgeText}
+                    style={{ opacity: 0.8 }}
+                  />
+                </Pressable>
+              );
+            }
+
+            return (
+              <View key={b.id} style={badgeStyle}>
+                <Ionicons name={b.icon} size={11} color={colors.profileCard.badgeText} />
+                <AppText
+                  style={{ color: colors.profileCard.badgeText, fontSize: 10, fontWeight: '600' }}
+                  numberOfLines={1}
+                >
+                  {b.label}
+                </AppText>
+              </View>
+            );
+          })}
         </View>
       </View>
     </Animated.View>
@@ -215,7 +272,7 @@ const s = StyleSheet.create({
   border: { ...StyleSheet.absoluteFill, borderRadius: Radius['2xl'], borderWidth: 1 },
   blobTL: { position: 'absolute', top: -50, left: -40, width: 140, height: 140, borderRadius: 70 },
   blobBR: { position: 'absolute', bottom: -40, right: -30, width: 110, height: 110, borderRadius: 55 },
-  inner: { 
+  inner: {
     padding: Spacing['4'],
     gap: 10,
   },
@@ -256,29 +313,29 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing['3'],
   },
-  avatarWrap: { 
+  avatarWrap: {
     position: 'relative',
   },
   avatarCircle: {
-    width: 58, 
-    height: 58, 
+    width: 58,
+    height: 58,
     borderRadius: 29,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5, 
+    borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.25)',
   },
   avatarEmoji: { fontSize: 26, lineHeight: 32, textAlign: 'center' },
   editBadge: {
-    position: 'absolute', 
-    bottom: 0, 
+    position: 'absolute',
+    bottom: 0,
     right: 0,
-    width: 17, 
-    height: 17, 
+    width: 17,
+    height: 17,
     borderRadius: 8.5,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5, 
+    borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.9)',
   },
   profileDetails: {
@@ -286,11 +343,11 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     gap: 0.5,
   },
-  name: { 
-    fontWeight: '700', 
+  name: {
+    fontWeight: '700',
     letterSpacing: -0.3,
   },
-  email: { 
+  email: {
     fontSize: 12,
     opacity: 0.8,
   },
@@ -331,19 +388,19 @@ const s = StyleSheet.create({
     width: '100%',
     height: StyleSheet.hairlineWidth,
   },
-  badges: { 
-    flexDirection: 'row', 
-    gap: Spacing['2'], 
-    flexWrap: 'wrap', 
+  badges: {
+    flexDirection: 'row',
+    gap: Spacing['2'],
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  badge: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 4, 
-    paddingHorizontal: 9, 
-    paddingVertical: 4, 
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: Radius.lg,
   },
 });

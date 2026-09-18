@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { zustandStorage } from './storage';
-import type { Account } from './types';
+import type { Account, CurrencyCode } from './types';
 
 interface AccountState {
   accounts: Account[];
@@ -12,6 +12,7 @@ interface AccountState {
   setAccounts: (accounts: Account[]) => void;
   addAccount: (account: Account) => void;
   updateAccount: (id: string, updates: Partial<Account>) => void;
+  batchUpdateCurrency: (currency: CurrencyCode) => void;
   deleteAccount: (id: string) => void;
   setActiveAccount: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
@@ -39,6 +40,11 @@ export const useAccountStore = create<AccountState>()(
       updateAccount: (id, updates) =>
         set((state) => ({
           accounts: state.accounts.map((a) => (a.id === id ? { ...a, ...updates } : a)),
+        })),
+
+      batchUpdateCurrency: (currency) =>
+        set((state) => ({
+          accounts: state.accounts.map((a) => ({ ...a, currency })),
         })),
 
       deleteAccount: (id) =>

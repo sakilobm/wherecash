@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useAuth } from '@hooks/useAuth';
+import { useAccountStore } from '@store/accountStore';
 import { useTransactionStore } from '@store/transactionStore';
 import { toast } from '@store/toastStore';
 import { resetAllStores } from '@store/resetAllStores';
@@ -52,15 +53,21 @@ export function useProfile() {
       if (user) {
         setUser({ ...user, currency: code });
         
-        // Sync all existing accounts' currencies to the new currency code
-        const { accounts, updateAccount } = require('@store/accountStore').useAccountStore.getState();
-        accounts.forEach((a: any) => updateAccount(a.id, { currency: code }));
-
-        // Sync all existing transactions' currencies to the new currency code
-        const { transactions, updateTransaction } = useTransactionStore.getState();
-        transactions.forEach((t) => updateTransaction(t.id, { currency: code }));
+        // Atomically sync all existing accounts and transactions
+        useAccountStore.getState().batchUpdateCurrency(code);
+        useTransactionStore.getState().batchUpdateCurrency(code);
 
         toast.success(`Currency changed to ${code}`);
+      }
+    },
+    [user, setUser],
+  );
+
+  const handleUpdateProfile = useCallback(
+    (name: string, avatarId: string) => {
+      if (user) {
+        setUser({ ...user, fullName: name.trim(), avatarUrl: avatarId });
+        toast.success('Profile updated successfully!');
       }
     },
     [user, setUser],
@@ -199,6 +206,7 @@ export function useProfile() {
     memberSince,
     initials,
     handleEditName,
+    handleUpdateProfile,
     handleCurrencySelect,
     handleExport,
     handleExportAsFile,

@@ -34,6 +34,8 @@ interface PreferencesState {
   notifPrefs: NotifPrefs;
   storagePermissionGranted: boolean;
   hideBalance: boolean;
+  biometricEnabled: boolean;
+  autoLockEnabled: boolean;
   autoBackupEnabled: boolean;
   autoBackupFrequency: 'daily' | 'weekly' | 'on_change';
   lastBackupTime: string | null;
@@ -44,6 +46,8 @@ interface PreferencesState {
   setNotifPrefs: (prefs: Partial<NotifPrefs>) => void;
   setStoragePermissionGranted: (granted: boolean) => void;
   toggleHideBalance: () => void;
+  setBiometricEnabled: (enabled: boolean) => void;
+  setAutoLockEnabled: (enabled: boolean) => void;
   setAutoBackupEnabled: (enabled: boolean) => void;
   setAutoBackupFrequency: (freq: 'daily' | 'weekly' | 'on_change') => void;
   setLastBackupTime: (time: string | null) => void;
@@ -59,6 +63,8 @@ export const usePreferencesStore = create<PreferencesState>()(
       notifPrefs: DEFAULT_NOTIF_PREFS,
       storagePermissionGranted: false,
       hideBalance: false,
+      biometricEnabled: false,
+      autoLockEnabled: true,
       autoBackupEnabled: true,
       autoBackupFrequency: 'daily',
       lastBackupTime: null,
@@ -70,6 +76,8 @@ export const usePreferencesStore = create<PreferencesState>()(
       setNotifPrefs: (prefs) => set((state) => ({ notifPrefs: { ...state.notifPrefs, ...prefs } })),
       setStoragePermissionGranted: (storagePermissionGranted) => set({ storagePermissionGranted }),
       toggleHideBalance: () => set((state) => ({ hideBalance: !state.hideBalance })),
+      setBiometricEnabled: (biometricEnabled) => set({ biometricEnabled }),
+      setAutoLockEnabled: (autoLockEnabled) => set({ autoLockEnabled }),
       setAutoBackupEnabled: (autoBackupEnabled) => set({ autoBackupEnabled }),
       setAutoBackupFrequency: (autoBackupFrequency) => set({ autoBackupFrequency }),
       setLastBackupTime: (lastBackupTime) => set({ lastBackupTime }),

@@ -56,12 +56,13 @@ export interface SecPrefs {
 export function useProfileScreen() {
   const {
     user, txCount, memberSince, initials,
-    handleEditName, handleCurrencySelect: currencySelect,
+    handleEditName, handleUpdateProfile, handleCurrencySelect: currencySelect,
     handleExport: exportData, handleBackup,
     handleClearAllData: clearAllData, handleSeedDemoData, handleUndoDemoData, handleSignOut,
   } = useProfile();
 
   // ── Sheet visibility ──
+  const [editProfileModal, setEditProfileModal] = useState(false);
   const [currencySheet, setCurrencySheet] = useState(false);
   const [notifSheet,    setNotifSheet]    = useState(false);
   const [securitySheet, setSecuritySheet] = useState(false);
@@ -81,9 +82,13 @@ export function useProfileScreen() {
 
   const [hasSnapshot, setHasSnapshot] = useState(false);
 
-  const [secPrefs, setSecPrefs] = useState<SecPrefs>({
-    biometric: false, autoLock: true, hideBalance: false,
-  });
+  // Preferences from persistent Zustand store
+  const biometricEnabled = usePreferencesStore((s) => s.biometricEnabled);
+  const autoLockEnabled = usePreferencesStore((s) => s.autoLockEnabled);
+  const hideBalance = usePreferencesStore((s) => s.hideBalance);
+  const setBiometricEnabled = usePreferencesStore((s) => s.setBiometricEnabled);
+  const setAutoLockEnabled = usePreferencesStore((s) => s.setAutoLockEnabled);
+  const toggleHideBalance = usePreferencesStore((s) => s.toggleHideBalance);
   
   const hapticLevel = usePreferencesStore((s) => s.hapticLevel);
   const notifPrefs = usePreferencesStore((s) => s.notifPrefs);
@@ -167,6 +172,11 @@ export function useProfileScreen() {
     hasSnapshot,
 
     sheets: {
+      editProfile: {
+        isOpen: editProfileModal,
+        open:   () => { Haptics.selectionAsync(); setEditProfileModal(true); },
+        close:  () => setEditProfileModal(false),
+      } satisfies SheetHandle,
       currency: {
         isOpen: currencySheet,
         open:   () => { Haptics.selectionAsync(); setCurrencySheet(true); },
@@ -249,7 +259,11 @@ export function useProfileScreen() {
 
     preferences: {
       notifications: notifPrefs,
-      security:      secPrefs,
+      security: {
+        biometric: biometricEnabled,
+        autoLock: autoLockEnabled,
+        hideBalance: hideBalance,
+      },
       haptics: {
         level: hapticLevel,
       },
@@ -263,12 +277,17 @@ export function useProfileScreen() {
       },
       updateSecurity: (key: keyof SecPrefs, value: boolean) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        setSecPrefs((p) => ({ ...p, [key]: value }));
+        if (key === 'biometric') setBiometricEnabled(value);
+        else if (key === 'autoLock') setAutoLockEnabled(value);
+        else if (key === 'hideBalance') {
+          if (hideBalance !== value) toggleHideBalance();
+        }
       },
     },
 
     handlers: {
-      editName:       handleEditName,
+      editName:       () => { Haptics.selectionAsync(); setEditProfileModal(true); },
+      updateProfile:  handleUpdateProfile,
       selectCurrency: handleSelectCurrency,
       exportData:     handleExport,
       backup:         handleBackup,

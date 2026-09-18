@@ -33,6 +33,7 @@ import { HapticSettingsSheet } from '@components/profile/HapticSettingsSheet';
 import { BackupSyncSheet } from '@components/profile/BackupSyncSheet';
 import { ImportSheet } from '@components/profile/ImportSheet';
 import { InteractiveGuidesSheet } from '@components/profile/InteractiveGuidesSheet';
+import { EditProfileModal } from '@components/profile/EditProfileModal';
 import { formatBackupDate } from '@/utils/backupManager';
 import { ConfirmModal } from '@components/ConfirmModal';
 import { AppText } from '@components/AppText';
@@ -43,10 +44,10 @@ import { Spacing, Radius, Layout } from '@constants/index';
 
 function useEntrance(delay: number) {
   const opacity = useSharedValue(0);
-  const ty      = useSharedValue(18);
+  const ty = useSharedValue(18);
   React.useEffect(() => {
     opacity.value = withDelay(delay, withTiming(1, { duration: 360 }));
-    ty.value      = withDelay(delay, withSpring(0, { damping: 22, stiffness: 200 }));
+    ty.value = withDelay(delay, withSpring(0, { damping: 22, stiffness: 200 }));
   }, [delay]);
   return useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateY: ty.value }] }));
 }
@@ -81,6 +82,7 @@ export default function ProfileScreen() {
           txCount={data.txCount}
           currency={data.user?.currency ?? 'USD'}
           onEditPress={handlers.editName}
+          onCurrencyPress={sheets.currency.open}
         />
 
         <SectionCard title="Appearance" delay={80} accentColor={colors.brand.secondary}>
@@ -103,13 +105,13 @@ export default function ProfileScreen() {
         </SectionCard>
 
         <SectionCard title="Account" delay={160} accentColor={colors.brand.primary}>
-          <SettingRow animDelay={0}   icon="wallet-outline"           iconColor={colors.brand.primary} label="Manage Accounts"   subtitle="Add, edit, or delete accounts"                         onPress={() => router.push('/accounts')} />
-          <SettingRow animDelay={40}  icon="grid-outline"             iconColor={colors.status.income} label="Manage Categories" subtitle="Create & customize spending categories"                 onPress={() => router.push('/categories')} />
-          <SettingRow animDelay={80}  icon="notifications-outline"    iconColor={colors.brand.accentWarm} label="Notifications"     subtitle={`${activeNotifs} of 4 enabled`} onPress={sheets.notifications.open} />
-          <SettingRow animDelay={100} icon="analytics-outline"         iconColor="#38BDF8" label="Analytics & Insights" subtitle="Charts, trends & growth metrics" onPress={() => router.push('/analytics')} />
-          <SettingRow animDelay={120} icon="globe-outline"            iconColor={colors.status.info} label="Currency & Region" subtitle={`${data.user?.currency ?? 'USD'} · ${CURRENCY_SYMBOLS[data.user?.currency ?? 'USD']}`} onPress={sheets.currency.open} />
+          <SettingRow animDelay={0} icon="wallet-outline" iconColor={colors.brand.primary} label="Manage Accounts" subtitle="Add, edit, or delete accounts" onPress={() => router.push('/accounts')} />
+          <SettingRow animDelay={40} icon="grid-outline" iconColor={colors.status.income} label="Manage Categories" subtitle="Create & customize spending categories" onPress={() => router.push('/categories')} />
+          <SettingRow animDelay={80} icon="notifications-outline" iconColor={colors.brand.accentWarm} label="Notifications" subtitle={`${activeNotifs} of 4 enabled`} onPress={sheets.notifications.open} />
+          <SettingRow animDelay={100} icon="analytics-outline" iconColor="#38BDF8" label="Analytics & Insights" subtitle="Charts, trends & growth metrics" onPress={() => router.push('/analytics')} />
+          <SettingRow animDelay={120} icon="globe-outline" iconColor={colors.status.info} label="Currency & Region" subtitle={`${data.user?.currency ?? 'USD'} · ${CURRENCY_SYMBOLS[data.user?.currency ?? 'USD']}`} onPress={sheets.currency.open} />
           <SettingRow animDelay={160} icon="shield-checkmark-outline" iconColor={colors.status.expense} label="Security & Privacy" subtitle={preferences.security.biometric ? 'Biometrics on' : 'PIN only'} onPress={sheets.security.open} />
-          <SettingRow animDelay={200} icon="phone-portrait-outline"   iconColor={colors.brand.secondary} label="Vibration & Haptics" subtitle={preferences.haptics.level === 'off' ? 'Off' : `${preferences.haptics.level.charAt(0).toUpperCase() + preferences.haptics.level.slice(1)} strength`} onPress={sheets.haptics.open} isLast />
+          <SettingRow animDelay={200} icon="phone-portrait-outline" iconColor={colors.brand.secondary} label="Vibration & Haptics" subtitle={preferences.haptics.level === 'off' ? 'Off' : `${preferences.haptics.level.charAt(0).toUpperCase() + preferences.haptics.level.slice(1)} strength`} onPress={sheets.haptics.open} isLast />
         </SectionCard>
 
         <SectionCard title="Data" delay={240} accentColor={colors.status.income}>
@@ -150,20 +152,20 @@ export default function ProfileScreen() {
               </View>
             }
           />
-          <SettingRow animDelay={40}  icon="download-outline" iconColor={colors.brand.secondary} label="Export Data"   subtitle={`${data.txCount} transactions ready`}      onPress={sheets.export.open} />
-          <SettingRow animDelay={80}  icon="cloud-upload-outline" iconColor={colors.brand.primary} label="Import Data" subtitle="Import transactions from CSV or JSON" onPress={sheets.import.open} />
+          <SettingRow animDelay={40} icon="download-outline" iconColor={colors.brand.secondary} label="Export Data" subtitle={`${data.txCount} transactions ready`} onPress={sheets.export.open} />
+          <SettingRow animDelay={80} icon="cloud-upload-outline" iconColor={colors.brand.primary} label="Import Data" subtitle="Import transactions from CSV or JSON" onPress={sheets.import.open} />
           <SettingRow animDelay={120} icon="sparkles-outline" iconColor={colors.brand.secondary} label="Load Play Store Demo" subtitle="Populate mock data for screenshots" onPress={confirms.seedData.show} />
           {screen.hasSnapshot && (
             <SettingRow animDelay={140} icon="refresh-outline" iconColor={colors.status.warning} label="Undo Play Store Demo" subtitle="Restore original data state" onPress={confirms.undoData.show} />
           )}
-          <SettingRow animDelay={180} icon="trash-outline"    iconColor={colors.status.expense} label="Clear All Data" subtitle="Permanently erase all app data"             onPress={confirms.clearData.show} isLast />
+          <SettingRow animDelay={180} icon="trash-outline" iconColor={colors.status.expense} label="Clear All Data" subtitle="Permanently erase all app data" onPress={confirms.clearData.show} isLast />
         </SectionCard>
 
         <SectionCard title="Support" delay={320} accentColor={colors.brand.accent}>
-          <SettingRow animDelay={0}   icon="help-circle-outline"        iconColor={colors.brand.accent}          label="Help & Support" subtitle="FAQs and contact"    onPress={sheets.help.open} />
-          <SettingRow animDelay={40}  icon="compass-outline"            iconColor={colors.brand.primary}         label="Interactive Guides" subtitle="Replay screen walkthroughs" onPress={sheets.guides.open} />
-          <SettingRow animDelay={80}  icon="star-outline"               iconColor={colors.status.warning}        label="Rate WhereCash" subtitle="Share your feedback"  onPress={confirms.rate.show} />
-          <SettingRow animDelay={120} icon="information-circle-outline" iconColor={colors.text.tertiary} label="About"         subtitle={`v${appVersion} · Build ${buildNumber}`}  onPress={() => toast.info(`WhereCash v${appVersion} — Built with Expo & React Native`)} isLast />
+          <SettingRow animDelay={0} icon="help-circle-outline" iconColor={colors.brand.accent} label="Help & Support" subtitle="FAQs and contact" onPress={sheets.help.open} />
+          <SettingRow animDelay={40} icon="compass-outline" iconColor={colors.brand.primary} label="Interactive Guides" subtitle="Replay screen walkthroughs" onPress={sheets.guides.open} />
+          <SettingRow animDelay={80} icon="star-outline" iconColor={colors.status.warning} label="Rate WhereCash" subtitle="Share your feedback" onPress={confirms.rate.show} />
+          <SettingRow animDelay={120} icon="information-circle-outline" iconColor={colors.text.tertiary} label="About" subtitle={`v${appVersion} · Build ${buildNumber}`} onPress={() => toast.info(`WhereCash v${appVersion} — Built with Expo & React Native`)} isLast />
         </SectionCard>
 
         <Animated.View style={useEntrance(400)}>
@@ -173,7 +175,7 @@ export default function ProfileScreen() {
               s.signOutBtn,
               {
                 backgroundColor: colors.status.expense + '15',
-                borderColor:     colors.status.expense + '30',
+                borderColor: colors.status.expense + '30',
                 opacity: pressed ? 0.75 : 1,
               },
             ]}
@@ -188,7 +190,7 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {/* ── Bottom Sheets ── */}
-      <ProfileBottomSheet visible={sheets.currency.isOpen}      onClose={sheets.currency.close}      title="Currency & Region">
+      <ProfileBottomSheet visible={sheets.currency.isOpen} onClose={sheets.currency.close} title="Currency & Region">
         <CurrencySheet current={data.user?.currency ?? 'USD'} onSelect={handlers.selectCurrency} />
       </ProfileBottomSheet>
 
@@ -196,33 +198,44 @@ export default function ProfileScreen() {
         <NotifSheet prefs={preferences.notifications} onChange={preferences.updateNotification} onClose={sheets.notifications.close} />
       </ProfileBottomSheet>
 
-      <ProfileBottomSheet visible={sheets.security.isOpen}      onClose={sheets.security.close}      title="Security & Privacy">
+      <ProfileBottomSheet visible={sheets.security.isOpen} onClose={sheets.security.close} title="Security & Privacy">
         <SecuritySheet prefs={preferences.security} onChange={preferences.updateSecurity} />
       </ProfileBottomSheet>
 
-      <ProfileBottomSheet visible={sheets.haptics.isOpen}       onClose={sheets.haptics.close}      title="Vibration & Haptics">
+      <ProfileBottomSheet visible={sheets.haptics.isOpen} onClose={sheets.haptics.close} title="Vibration & Haptics">
         <HapticSettingsSheet />
       </ProfileBottomSheet>
 
-      <ProfileBottomSheet visible={sheets.export.isOpen}        onClose={sheets.export.close}        title="Export Data">
+      <ProfileBottomSheet visible={sheets.export.isOpen} onClose={sheets.export.close} title="Export Data">
         <ExportSheet onExport={handlers.exportData} />
       </ProfileBottomSheet>
 
-      <ProfileBottomSheet visible={sheets.help.isOpen}          onClose={sheets.help.close}          title="Help & Support">
+      <ProfileBottomSheet visible={sheets.help.isOpen} onClose={sheets.help.close} title="Help & Support">
         <HelpSheet />
       </ProfileBottomSheet>
 
-      <ProfileBottomSheet visible={sheets.backup.isOpen}        onClose={sheets.backup.close}        title="Backup & Sync">
+      <ProfileBottomSheet visible={sheets.backup.isOpen} onClose={sheets.backup.close} title="Backup & Sync">
         <BackupSyncSheet onClose={sheets.backup.close} />
       </ProfileBottomSheet>
 
-      <ProfileBottomSheet visible={sheets.import.isOpen}        onClose={sheets.import.close}        title="Import Data">
+      <ProfileBottomSheet visible={sheets.import.isOpen} onClose={sheets.import.close} title="Import Data">
         <ImportSheet onClose={sheets.import.close} />
       </ProfileBottomSheet>
 
-      <ProfileBottomSheet visible={sheets.guides.isOpen}        onClose={sheets.guides.close}        title="Interactive Guides">
+      <ProfileBottomSheet visible={sheets.guides.isOpen} onClose={sheets.guides.close} title="Interactive Guides">
         <InteractiveGuidesSheet onClose={sheets.guides.close} />
       </ProfileBottomSheet>
+
+      {/* ── Edit Profile Modal (Name & Avatar) ── */}
+      <EditProfileModal
+        visible={sheets.editProfile.isOpen}
+        onClose={sheets.editProfile.close}
+        currentName={data.user?.fullName ?? ''}
+        currentAvatarId={data.user?.avatarUrl ?? undefined}
+        onSave={(name, avatarId) => {
+          handlers.updateProfile(name, avatarId);
+        }}
+      />
 
       {/* ── Confirm Modals ── */}
       <ConfirmModal
@@ -270,9 +283,9 @@ export default function ProfileScreen() {
 }
 
 const s = StyleSheet.create({
-  safeArea:   { flex: 1 },
-  scroll:     { paddingHorizontal: Spacing['5'], paddingTop: Spacing['3'], gap: Spacing['4'] },
-  badge:      { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full },
+  safeArea: { flex: 1 },
+  scroll: { paddingHorizontal: Spacing['5'], paddingTop: Spacing['3'], gap: Spacing['4'] },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full },
   signOutBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: Spacing['2'], paddingVertical: Spacing['4'],
