@@ -39,19 +39,34 @@ export function ProfileBottomSheet({ visible, onClose, title, children }: Props)
   // Dynamic max height capped strictly below top bar / status bar
   const maxAllowedHeight = screenHeight - insets.top - 20;
 
+  const [isMounted, setIsMounted] = React.useState(visible);
   const ty = useSharedValue(screenHeight);
   const startY = useSharedValue(0);
   const dimOpacity = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
+      setIsMounted(true);
       dimOpacity.value = withTiming(1, { duration: 220 });
       ty.value = withSpring(0, { damping: 26, stiffness: 220, mass: 0.9 });
-    } else {
+    } else if (isMounted) {
       dimOpacity.value = withTiming(0, { duration: 180 });
-      ty.value = withTiming(screenHeight, { duration: 240 });
+      ty.value = withTiming(screenHeight, { duration: 220 }, (finished) => {
+        if (finished) {
+          runOnJS(setIsMounted)(false);
+        }
+      });
     }
-  }, [visible, screenHeight]);
+  }, [visible, isMounted, screenHeight]);
+
+  const handleClose = React.useCallback(() => {
+    dimOpacity.value = withTiming(0, { duration: 180 });
+    ty.value = withTiming(screenHeight, { duration: 200 }, (finished) => {
+      if (finished) {
+        runOnJS(onClose)();
+      }
+    });
+  }, [onClose, screenHeight]);
 
   const panGesture = useMemo(() => {
     return Gesture.Pan()
@@ -83,17 +98,19 @@ export function ProfileBottomSheet({ visible, onClose, title, children }: Props)
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: ty.value }] }));
   const backdropStyle = useAnimatedStyle(() => ({ opacity: dimOpacity.value }));
 
+  if (!isMounted) return null;
+
   return (
     <Modal
       transparent
-      visible={visible}
+      visible={isMounted}
       statusBarTranslucent
       animationType="none"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <Animated.View style={[s.backdrop, { backgroundColor: colors.overlay.heavy }, backdropStyle]} pointerEvents={visible ? 'auto' : 'none'}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
         </Animated.View>
 
         <Animated.View
@@ -114,7 +131,7 @@ export function ProfileBottomSheet({ visible, onClose, title, children }: Props)
               <View style={[s.handle, { backgroundColor: colors.glass.borderStrong }]} />
               <View style={s.titleRow}>
                 <AppText variant="headingSM" color={colors.text.primary}>{title}</AppText>
-                <Pressable onPress={onClose} hitSlop={12}>
+                <Pressable onPress={handleClose} hitSlop={12}>
                   <View style={[s.closeBtn, { backgroundColor: colors.glass.backgroundMid }]}>
                     <Ionicons name="close" size={15} color={colors.text.secondary} />
                   </View>

@@ -18,11 +18,8 @@ function useEntrance(delay: number) {
   const opacity = useSharedValue(0);
   const ty      = useSharedValue(20);
   useEffect(() => {
-    const handle = requestIdleCallback(() => {
-      opacity.value = withDelay(delay, withTiming(1, { duration: 380 }));
-      ty.value      = withDelay(delay, withSpring(0, { damping: 24, stiffness: 180 }));
-    });
-    return () => cancelIdleCallback(handle);
+    opacity.value = withDelay(delay, withTiming(1, { duration: 380 }));
+    ty.value      = withDelay(delay, withSpring(0, { damping: 24, stiffness: 180 }));
   }, [delay]);
   return useAnimatedStyle(() => ({
     opacity:   opacity.value,
@@ -30,7 +27,7 @@ function useEntrance(delay: number) {
   }));
 }
 
-export function SectionCard({ title, children, delay = 0, accentColor }: Props) {
+export const SectionCard = React.memo(function SectionCard({ title, children, delay = 0, accentColor }: Props) {
   const { colors } = useTheme();
   const anim  = useEntrance(delay);
   const dot   = accentColor ?? colors.brand.primary;
@@ -64,7 +61,7 @@ export function SectionCard({ title, children, delay = 0, accentColor }: Props) 
       </View>
     </Animated.View>
   );
-}
+});
 
 const s = StyleSheet.create({
   sectionHeader: {

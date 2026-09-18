@@ -22,7 +22,7 @@ interface Props {
   animDelay?: number;
 }
 
-export function SettingRow({ icon, iconColor, label, subtitle, onPress, right, isLast, animDelay = 0 }: Props) {
+export const SettingRow = React.memo(function SettingRow({ icon, iconColor, label, subtitle, onPress, right, isLast, animDelay = 0 }: Props) {
   const { colors, isDark } = useTheme();
   const scale = useSharedValue(1);
   const rowAnim = useAnimatedStyle(() => ({
@@ -74,7 +74,7 @@ export function SettingRow({ icon, iconColor, label, subtitle, onPress, right, i
       </Pressable>
     </Animated.View>
   );
-}
+});
 
 const s = StyleSheet.create({
   row: {

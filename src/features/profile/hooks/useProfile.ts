@@ -22,9 +22,8 @@ import {
 
 export function useProfile() {
   const { user, signOut, setUser } = useAuth();
-  const transactions = useTransactionStore((s) => s.transactions);
+  const txCount = useTransactionStore((s) => s.transactions.length);
 
-  const txCount     = transactions.length;
   const memberSince = user?.createdAt ? format(new Date(user.createdAt), 'MMM yyyy') : 'Jan 2025';
   const initials    = user?.fullName?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) ?? 'AM';
 
@@ -70,9 +69,10 @@ export function useProfile() {
   const handleExportAsFile = useCallback(
     async (fmt: ExportFormat) => {
       try {
+        const txs = useTransactionStore.getState().transactions;
         const content = fmt === 'CSV'
-          ? generateTransactionsCSV(transactions)
-          : generateJSONString(transactions);
+          ? generateTransactionsCSV(txs)
+          : generateJSONString(txs);
 
         const ext = fmt === 'CSV' ? 'csv' : 'json';
         const mimeType = fmt === 'CSV' ? 'text/csv' : 'application/json';
@@ -100,15 +100,16 @@ export function useProfile() {
         return false;
       }
     },
-    [transactions],
+    [],
   );
 
   const handleShareAsText = useCallback(
     async (fmt: ExportFormat) => {
       try {
+        const txs = useTransactionStore.getState().transactions;
         const content = fmt === 'CSV'
-          ? generateTransactionsCSV(transactions)
-          : generateJSONString(transactions);
+          ? generateTransactionsCSV(txs)
+          : generateJSONString(txs);
 
         const success = await shareTextContent({
           title: `WhereCash Export (${fmt})`,
@@ -125,7 +126,7 @@ export function useProfile() {
         return false;
       }
     },
-    [transactions],
+    [],
   );
 
   const handleExport = useCallback(

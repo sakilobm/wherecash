@@ -47,7 +47,7 @@ function useEntrance(delay: number) {
   }));
 }
 
-export function ProfileHero({ avatarId, initials, fullName, email, memberSince, txCount, currency, onEditPress }: Props) {
+export const ProfileHero = React.memo(function ProfileHero({ avatarId, initials, fullName, email, memberSince, txCount, currency, onEditPress }: Props) {
   const { colors, isDark } = useTheme();
   const anim = useEntrance(0);
 
@@ -201,7 +201,7 @@ export function ProfileHero({ avatarId, initials, fullName, email, memberSince, 
       </View>
     </Animated.View>
   );
-}
+});
 
 const s = StyleSheet.create({
   hero: {
