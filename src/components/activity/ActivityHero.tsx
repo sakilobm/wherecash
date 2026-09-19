@@ -28,7 +28,7 @@ interface Props {
   monthLabel: string;
 }
 
-export function ActivityHero({ summary, monthLabel }: Props) {
+export const ActivityHero = React.memo(function ActivityHero({ summary, monthLabel }: Props) {
   const { colors, isDark } = useTheme();
   const { symbol } = useFormatCurrency();
   const net = summary.income - summary.expense;
@@ -145,7 +145,7 @@ export function ActivityHero({ summary, monthLabel }: Props) {
       </Animated.View>
     </View>
   );
-}
+});
 
 const s = StyleSheet.create({
   /* ── Unified Card ── */

@@ -28,7 +28,7 @@ interface Props {
   balanceAfter?: number;
 }
 
-export function SwipeableTransactionRow({ tx, onDelete, onPress, balanceAfter }: Props) {
+export const SwipeableTransactionRow = React.memo(function SwipeableTransactionRow({ tx, onDelete, onPress, balanceAfter }: Props) {
   const { colors } = useTheme();
   const cardBg = colors.surface.sheet;
   const translateX = useSharedValue(0);
@@ -107,7 +107,7 @@ export function SwipeableTransactionRow({ tx, onDelete, onPress, balanceAfter }:
       </GestureDetector>
     </Animated.View>
   );
-}
+});
 
 const s = StyleSheet.create({
   wrapper: { position: 'relative', overflow: 'hidden' },

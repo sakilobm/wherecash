@@ -21,7 +21,7 @@ import { Spacing, Radius } from '@constants/index';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-export function AccountBar() {
+export const AccountBar = React.memo(function AccountBar() {
   const { colors, isDark } = useTheme();
   const accounts   = useAccountStore((s) => s.accounts);
   const filters    = useTransactionStore((s) => s.filters);
@@ -74,7 +74,7 @@ export function AccountBar() {
       </ScrollView>
     </View>
   );
-}
+});
 
 const s = StyleSheet.create({
   outer:     { paddingLeft: Spacing['5'], paddingTop: Spacing['2'], paddingBottom: Spacing['1'] },

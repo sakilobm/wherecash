@@ -15,7 +15,7 @@ import { useTransactions } from './useTransactions';
 import { useTransactionStore } from '@store/transactionStore';
 import { useAccountStore } from '@store/accountStore';
 import type { Transaction, Account } from '@store/types';
-import { sumMoney } from '@/utils/moneyMath';
+import { sumMoney, addMoney } from '@/utils/moneyMath';
 
 export interface ActivitySummary {
   income:  number;
@@ -43,14 +43,20 @@ export function useActivityScreen() {
     : null;
 
   const summary = useMemo<ActivitySummary>(() => {
-    const allTxs = (groups ?? []).flatMap((g) => g.transactions);
-    const incomeTxs = allTxs.filter((t) => t.type === 'income').map((t) => t.amount);
-    const expenseTxs = allTxs.filter((t) => t.type === 'expense').map((t) => t.amount);
-    return {
-      income:  sumMoney(incomeTxs),
-      expense: sumMoney(expenseTxs),
-      count:   allTxs.length,
-    };
+    let income = 0;
+    let expense = 0;
+    let count = 0;
+    for (const group of groups ?? []) {
+      for (const t of group.transactions) {
+        count++;
+        if (t.type === 'income') {
+          income = addMoney(income, t.amount);
+        } else if (t.type === 'expense') {
+          expense = addMoney(expense, t.amount);
+        }
+      }
+    }
+    return { income, expense, count };
   }, [groups]);
 
   const monthLabel = filters.month
