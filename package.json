@@ -54,7 +54,8 @@
     "build:prod": "node scripts/export-build.js --env production --command \"eas build --platform android --profile production --local\"",
     "build:preview": "node scripts/export-build.js --env development --command \"eas build --platform android --profile preview --local\"",
     "build:prod-local": "node scripts/export-build.js --env production --command \"npx expo prebuild --clean && cd android && gradlew assembleRelease\"",
-    "build:prod-local-aab": "node scripts/export-build.js --env production --command \"npx expo prebuild --clean && cd android && gradlew bundleRelease\""
+    "build:prod-local-aab": "node scripts/export-build.js --env production --command \"npx expo prebuild --clean && cd android && gradlew bundleRelease\"",
+    "release:aab": "node scripts/build-prod-aab.js"
   },
   "private": true
 }
