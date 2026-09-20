@@ -26,5 +26,5 @@
         "statusBar.debuggingForeground": "#e7e7e7"
     },
     "peacock.color": "#7f13e6",
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "automatic"
 }

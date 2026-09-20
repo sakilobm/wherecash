@@ -152,6 +152,13 @@ if (fs.existsSync(aabPath)) {
   log(`📊 Bundle Size:   ${colors.bold}${sizeMB} MB`, colors.cyan);
   log(`🔖 Version:       ${colors.bold}${versionInfo.version} (versionCode: ${versionInfo.versionCode})`, colors.cyan);
   log(`🏷️  Package:       ${colors.bold}com.wherecash.app`, colors.cyan);
+
+  const mappingPath = path.resolve(__dirname, '../android/app/build/outputs/mapping/release/mapping.txt');
+  if (fs.existsSync(mappingPath)) {
+    log(`🗺️  Deobfuscation: ${colors.bold}${mappingPath}`, colors.green);
+    log(`   (Note: AGP also embeds this mapping directly inside the .aab automatically)`, colors.yellow);
+  }
+
   log(`\n✨ You can now upload this .aab directly to Google Play Console!\n`, colors.bold + colors.green);
 } else {
   log(`\n⚠️  Build completed but AAB was not found at expected path:\n   ${aabPath}`, colors.yellow);
