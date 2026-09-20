@@ -1,3 +1,4 @@
+import React, { memo } from 'react';
 import { View, StyleSheet, Pressable, Switch, Platform } from 'react-native';
 import Animated, { FadeInDown, FadeOutLeft } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,7 +36,7 @@ interface Props {
   onDelete: () => void;
 }
 
-export function ReminderCard({ reminder, index, onToggle, onDelete }: Props) {
+export const ReminderCard = memo(function ReminderCard({ reminder, index, onToggle, onDelete }: Props) {
   const { colors } = useTheme();
   const accent = colors.status.savings;
 
@@ -136,7 +137,7 @@ export function ReminderCard({ reminder, index, onToggle, onDelete }: Props) {
       </View>
     </Animated.View>
   );
-}
+});
 
 const s = StyleSheet.create({
   card: {

@@ -1,3 +1,4 @@
+import React, { memo } from 'react';
 import { View, StyleSheet, Pressable, Platform } from 'react-native';
 import type { ComponentProps } from 'react';
 import Animated, { FadeInDown, FadeOutLeft } from 'react-native-reanimated';
@@ -40,7 +41,7 @@ interface Props {
   onDelete:     () => void;
 }
 
-export function NotificationCard({ notification, index, onPress, onDelete }: Props) {
+export const NotificationCard = memo(function NotificationCard({ notification, index, onPress, onDelete }: Props) {
   const { colors } = useTheme();
   const metaIcon  = TYPE_ICON[notification.type];
   const metaColor = TYPE_COLOR[notification.type](colors);
@@ -116,7 +117,7 @@ export function NotificationCard({ notification, index, onPress, onDelete }: Pro
       </Pressable>
     </Animated.View>
   );
-}
+});
 
 const s = StyleSheet.create({
   card: {

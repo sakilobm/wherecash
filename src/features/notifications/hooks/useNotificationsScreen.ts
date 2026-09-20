@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import * as Haptics from 'expo-haptics';
 import { useNotificationStore } from '@store/notificationStore';
 import { useBudgetStore } from '@store/budgetStore';
@@ -85,7 +85,10 @@ export function useNotificationsScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.isRead).length,
+    [notifications]
+  );
 
   const handleMarkRead = useCallback(
     (id: string) => { markRead(id); },
