@@ -52,7 +52,11 @@ module.exports = {
     splash: {
       image: "./assets/app-icon/Icon-512x512.png",
       resizeMode: "contain",
-      backgroundColor: "#F7F8F2"
+      backgroundColor: "#080C14",
+      dark: {
+        image: "./assets/app-icon/Icon-512x512.png",
+        backgroundColor: "#080C14"
+      }
     },
     android: {
       adaptiveIcon: {
@@ -75,7 +79,19 @@ module.exports = {
     plugins: [
       "expo-router",
       "expo-font",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#080C14",
+          "image": "./assets/app-icon/Icon-512x512.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#080C14",
+            "image": "./assets/app-icon/Icon-512x512.png"
+          }
+        }
+      ],
       [
         "expo-secure-store",
         {
