@@ -31,6 +31,7 @@ export interface ConfirmModalProps {
   onCancel: () => void;
   danger?: boolean;
   icon?: IoniconName;
+  layout?: 'auto' | 'row' | 'column';
 }
 
 export function ConfirmModal({
@@ -43,8 +44,15 @@ export function ConfirmModal({
   onCancel,
   danger = false,
   icon,
+  layout = 'auto',
 }: ConfirmModalProps) {
   const { colors, isDark } = useTheme();
+
+  const isLongText =
+    confirmLabel.length > 10 ||
+    cancelLabel.length > 10 ||
+    confirmLabel.length + cancelLabel.length > 18;
+  const isStacked = layout === 'column' || (layout !== 'row' && isLongText);
 
   const scale = useSharedValue(0.82);
   const opacity = useSharedValue(0);
@@ -70,10 +78,68 @@ export function ConfirmModal({
   const backdropStyle = useAnimatedStyle(() => ({ opacity: dimOpacity.value }));
 
   const accentColor = danger ? colors.status.expense : colors.brand.primary;
+  const confirmTextColor = danger ? colors.white : (colors.brand.onPrimary || '#0B0F19');
   const iconName: IoniconName = icon ?? (danger ? 'warning' : 'information-circle');
   const cardBg = colors.surface.sheet;
 
   if (!visible) return null;
+
+  const renderCancelBtn = () => (
+    <Pressable
+      onPress={onCancel}
+      style={({ pressed }) => [
+        styles.btn,
+        styles.cancelBtn,
+        isStacked && styles.btnStacked,
+        {
+          backgroundColor: colors.glass.background,
+          borderColor: colors.glass.backgroundMid,
+          opacity: pressed ? 0.7 : 1,
+        },
+      ]}
+    >
+      <AppText
+        variant="labelLG"
+        color={colors.text.secondary}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        style={{ lineHeight: undefined, fontWeight: '600' }}
+      >
+        {cancelLabel}
+      </AppText>
+    </Pressable>
+  );
+
+  const renderConfirmBtn = () => (
+    <Pressable
+      onPress={() => {
+        Haptics.notificationAsync(
+          danger
+            ? Haptics.NotificationFeedbackType.Warning
+            : Haptics.NotificationFeedbackType.Success
+        );
+        onConfirm();
+      }}
+      style={({ pressed }) => [
+        styles.btn,
+        styles.confirmBtn,
+        isStacked && styles.btnStacked,
+        {
+          backgroundColor: accentColor,
+          opacity: pressed ? 0.82 : 1,
+        },
+      ]}
+    >
+      <AppText
+        variant="labelLG"
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        style={{ color: confirmTextColor, fontWeight: '700', lineHeight: undefined }}
+      >
+        {confirmLabel}
+      </AppText>
+    </Pressable>
+  );
 
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={onCancel}>
@@ -129,59 +195,18 @@ export function ConfirmModal({
           )}
 
           {/* Buttons */}
-          <View style={styles.btnRow}>
-            {/* Cancel */}
-            <Pressable
-              onPress={onCancel}
-              style={({ pressed }) => [
-                styles.btn,
-                styles.cancelBtn,
-                {
-                  backgroundColor: colors.glass.background,
-                  borderColor: colors.glass.backgroundMid,
-                  opacity: pressed ? 0.7 : 1,
-                },
-              ]}
-            >
-              <AppText
-                variant="labelLG"
-                color={colors.text.secondary}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                style={{ lineHeight: undefined }}
-              >
-                {cancelLabel}
-              </AppText>
-            </Pressable>
-
-            {/* Confirm */}
-            <Pressable
-              onPress={() => {
-                Haptics.notificationAsync(
-                  danger
-                    ? Haptics.NotificationFeedbackType.Warning
-                    : Haptics.NotificationFeedbackType.Success
-                );
-                onConfirm();
-              }}
-              style={({ pressed }) => [
-                styles.btn,
-                styles.confirmBtn,
-                {
-                  backgroundColor: accentColor,
-                  opacity: pressed ? 0.82 : 1,
-                },
-              ]}
-            >
-              <AppText
-                variant="labelLG"
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                style={{ color: colors.white, fontWeight: '700', lineHeight: undefined }}
-              >
-                {confirmLabel}
-              </AppText>
-            </Pressable>
+          <View style={[styles.btnContainer, isStacked ? styles.btnCol : styles.btnRow]}>
+            {isStacked ? (
+              <>
+                {renderConfirmBtn()}
+                {renderCancelBtn()}
+              </>
+            ) : (
+              <>
+                {renderCancelBtn()}
+                {renderConfirmBtn()}
+              </>
+            )}
           </View>
         </Animated.View>
       </View>
@@ -232,11 +257,17 @@ const styles = StyleSheet.create({
     opacity: 0.85,
     marginBottom: Spacing['2'],
   },
+  btnContainer: {
+    width: '100%',
+    marginTop: Spacing['2'],
+  },
   btnRow: {
     flexDirection: 'row',
     gap: Spacing['3'],
-    width: '100%',
-    marginTop: Spacing['2'],
+  },
+  btnCol: {
+    flexDirection: 'column',
+    gap: Spacing['2'],
   },
   btn: {
     flex: 1,
@@ -244,6 +275,11 @@ const styles = StyleSheet.create({
     borderRadius: Radius.xl,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: Spacing['4'],
+  },
+  btnStacked: {
+    flex: 0,
+    width: '100%',
   },
   cancelBtn: {
     borderWidth: 1,

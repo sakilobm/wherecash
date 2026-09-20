@@ -37,6 +37,26 @@ export function useActivityScreen() {
   const accounts   = useAccountStore((s) => s.accounts);
   const filters    = useTransactionStore((s) => s.filters);
   const setFilters = useTransactionStore((s) => s.setFilters);
+  const resetFiltersStore = useTransactionStore((s) => s.resetFilters);
+  const totalTxCount = useTransactionStore((s) => s.transactions.length);
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.type !== 'all') count++;
+    if (filters.category !== 'all') count++;
+    if (filters.accountId !== null) count++;
+    if (filters.searchQuery?.trim()) count++;
+    return count;
+  }, [filters.type, filters.category, filters.accountId, filters.searchQuery]);
+
+  const hasActiveFilters = activeFilterCount > 0;
+
+  const isFilteredEmpty = isEmpty && hasActiveFilters && totalTxCount > 0;
+
+  const resetFilters = useCallback(() => {
+    triggerAppHaptic('light', 'button');
+    resetFiltersStore();
+  }, [resetFiltersStore]);
 
   const selectedAccount: Account | null = filters.accountId
     ? (accounts.find((a) => a.id === filters.accountId) ?? null)
@@ -108,7 +128,11 @@ export function useActivityScreen() {
 
   return {
     groups, isLoading, isEmpty, refresh, removeTransaction, formatDateHeader,
-    accounts, filters, setFilters,
+    accounts, filters, setFilters, resetFilters,
+    hasActiveFilters,
+    activeFilterCount,
+    isFilteredEmpty,
+    totalTxCount,
     selectedAccount,
     summary,
     monthLabel,

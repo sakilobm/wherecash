@@ -7,13 +7,14 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, Pressable } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@components/AppText';
 import { useTheme } from '@hooks/useTheme';
 import { Spacing, Radius } from '@constants/index';
+import { triggerAppHaptic } from '@/services/hapticsService';
 
 const FEATURES: { icon: 'trending-down-outline' | 'trending-up-outline' | 'analytics-outline'; colorKey: 'expense' | 'income' | 'savings'; text: string }[] = [
   { icon: 'trending-down-outline', colorKey: 'expense', text: 'Log expenses by category' },
@@ -21,9 +22,74 @@ const FEATURES: { icon: 'trending-down-outline' | 'trending-up-outline' | 'analy
   { icon: 'analytics-outline',     colorKey: 'savings', text: 'See monthly breakdowns'   },
 ];
 
-export function ActivityEmptyState() {
+export interface ActivityEmptyStateProps {
+  isFiltered?: boolean;
+  onResetFilters?: () => void;
+}
+
+export function ActivityEmptyState({ isFiltered = false, onResetFilters }: ActivityEmptyStateProps) {
   const { colors } = useTheme();
   const accentHex = colors.brand.primary;
+
+  const handleReset = () => {
+    triggerAppHaptic('light', 'button');
+    onResetFilters?.();
+  };
+
+  if (isFiltered) {
+    return (
+      <View style={s.root}>
+        {/* ── Filter Hero ─── */}
+        <Animated.View entering={FadeInDown.springify().damping(20).stiffness(140)} style={s.heroWrap}>
+          <View style={[s.outerRing, { borderColor: accentHex + '28' }]} />
+          <LinearGradient
+            colors={[accentHex, colors.brand.accent] as [string, string]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[s.iconCircle, { shadowColor: colors.black }]}
+          >
+            <Ionicons name="search-outline" size={34} color={colors.white} />
+          </LinearGradient>
+          <View style={[s.badge, { backgroundColor: colors.status.expense + '20' }]}>
+            <Ionicons name="close" size={16} color={colors.status.expense} />
+          </View>
+        </Animated.View>
+
+        {/* ── Text Block ─── */}
+        <Animated.View entering={FadeInDown.springify().damping(20).stiffness(140).delay(80)} style={s.textBlock}>
+          <AppText variant="headingMD" color={colors.text.primary} align="center">
+            No matching transactions
+          </AppText>
+          <AppText variant="bodySM" color={colors.text.secondary} align="center" style={s.subtitle}>
+            We couldn't find any transactions matching your active filters or search terms.
+          </AppText>
+        </Animated.View>
+
+        {/* ── Clear Filters Action ─── */}
+        {!!onResetFilters && (
+          <Animated.View entering={FadeInDown.springify().damping(20).stiffness(140).delay(160)}>
+            <Pressable
+              onPress={handleReset}
+              style={({ pressed }) => [
+                s.resetButton,
+                {
+                  backgroundColor: accentHex,
+                  opacity: pressed ? 0.88 : 1,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                  shadowColor: colors.black,
+                },
+              ]}
+            >
+              <Ionicons name="refresh-outline" size={17} color={colors.white} />
+              <AppText variant="bodySM" color={colors.white} style={s.resetButtonText}>
+                Clear All Filters
+              </AppText>
+            </Pressable>
+          </Animated.View>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={s.root}>
@@ -113,5 +179,21 @@ const s = StyleSheet.create({
   hint: {
     alignSelf: 'stretch', flexDirection: 'row', alignItems: 'flex-start',
     gap: Spacing['2'], padding: Spacing['3'], borderRadius: Radius.lg, borderWidth: 1,
+  },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing['2'],
+    paddingHorizontal: Spacing['5'],
+    paddingVertical: Spacing['3'],
+    borderRadius: Radius.full,
+    ...Platform.select({
+      ios:     { shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 8 },
+      android: { elevation: 4 },
+    }),
+  },
+  resetButtonText: {
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 });
